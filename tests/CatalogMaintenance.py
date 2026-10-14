@@ -1,0 +1,414 @@
+"""Explicit requests accumulate safely; removals do not depend on remote health."""
+
+import copy
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import catalog_maintenance as maintenance
+import catalog_sync as sync
+from CatalogPublication import FakeGitHub, POLICY, SOURCE, GUID
+
+RUN = "https://github.com/" + sync.REPOSITORY + "/actions/runs/123"
+ENV = {
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_EVENT_NAME": "workflow_dispatch",
+    "GITHUB_REPOSITORY": sync.REPOSITORY,
+    "GITHUB_ACTOR": "owner",
+    "GITHUB_RUN_ID": "123",
+    "PLUGIN_APP_SLUG": "catalog-app",
+}
+
+
+class MaintenanceTests(unittest.TestCase):
+    def setUp(self):
+        self.github = FakeGitHub()
+        self.plugins = {SOURCE: POLICY}
+        history = sync.reconcile(self.github, self.plugins, {}, [])
+        self.current: dict = {
+            "plugins.json": self.plugins,
+            "history.json": history,
+            "withdrawals.json": [],
+            "manifest.json": sync.render(history, [], self.plugins),
+        }
+
+    def request(
+        self,
+        state=None,
+        pending=None,
+        operation="Withdraw",
+        version="0.1.3.0",
+        **overrides,
+    ):
+        state = self.current if state is None else state
+        args = dict(
+            repository=SOURCE, reason="Owner decision", actor="owner", run_url=RUN
+        )
+        args.update(overrides)
+        return maintenance.request_change(
+            self.github,
+            state,
+            state["withdrawals.json"] if pending is None else pending,
+            operation,
+            version=version,
+            **args,
+        )
+
+    def test_withdrawal_and_duplicate_are_local_and_preserve_history(self):
+        before = copy.deepcopy(self.current)
+        with patch.object(
+            maintenance,
+            "verify_history",
+            side_effect=OSError("unrelated provider unavailable"),
+        ) as verify:
+            withdrawn = self.request()
+            self.assertEqual(withdrawn["manifest.json"], [])
+            self.assertEqual(self.request(withdrawn), withdrawn)
+            verify.assert_not_called()
+        self.assertEqual(self.current, before)
+        self.assertEqual(withdrawn["history.json"], before["history.json"])
+        self.assertEqual(withdrawn["withdrawals.json"][0]["requestedBy"], "owner")
+        self.assertEqual(withdrawn["withdrawals.json"][0]["requestUrl"], RUN)
+
+    def test_restoration_verifies_only_target_and_failure_preserves_input(self):
+        withdrawn = self.request()
+        before = copy.deepcopy(withdrawn)
+        restored = self.request(withdrawn, operation="Restore")
+        self.assertEqual(restored["manifest.json"], self.current["manifest.json"])
+        with (
+            patch.object(
+                maintenance,
+                "verify_history",
+                side_effect=sync.VerificationError("changed archive"),
+            ),
+            self.assertRaises(sync.VerificationError),
+        ):
+            self.request(withdrawn, operation="Restore")
+        self.assertEqual(withdrawn, before)
+        with patch.object(maintenance, "verify_history") as verify:
+            self.request(withdrawn, operation="Restore")
+            self.assertEqual(set(verify.call_args.args[2]), {GUID + "/0.1.3.0"})
+        with patch.object(maintenance, "verify_history") as verify:
+            self.assertEqual(
+                self.request(self.current, operation="Restore"), self.current
+            )
+            verify.assert_not_called()
+
+    def test_unknown_targets_invalid_versions_and_missing_audit_fail(self):
+        for overrides in (
+            {"repository": "other/repo"},
+            {"reason": " "},
+            {"actor": "bad actor"},
+            {"run_url": "https://example.invalid/123"},
+        ):
+            with (
+                self.subTest(overrides=overrides),
+                self.assertRaises(sync.VerificationError),
+            ):
+                self.request(**overrides)
+        for version in ("0.1.3", "01.1.3.0", "0.1.99.0"):
+            with (
+                self.subTest(version=version),
+                self.assertRaises(sync.VerificationError),
+            ):
+                self.request(version=version)
+
+    def test_multiple_pending_requests_rebase_and_latest_successful_operation_wins(
+        self,
+    ):
+        pending = self.request()
+        self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
+        latest = copy.deepcopy(self.current)
+        latest["history.json"] = sync.reconcile(
+            self.github, self.plugins, latest["history.json"], []
+        )
+        latest["manifest.json"] = sync.render(latest["history.json"], [], self.plugins)
+        pending_rows = maintenance.rebase_pending(latest, self.current, pending)
+        both = self.request(latest, pending_rows, version="0.1.4.0")
+        self.assertEqual(
+            {row["version"] for row in both["withdrawals.json"]}, {"0.1.3.0", "0.1.4.0"}
+        )
+        last = self.request(latest, both["withdrawals.json"], operation="Restore")
+        self.assertEqual(
+            [row["version"] for row in last["withdrawals.json"]], ["0.1.4.0"]
+        )
+        with (
+            patch.object(
+                maintenance, "verify_history", side_effect=OSError("status unavailable")
+            ),
+            self.assertRaises(OSError),
+        ):
+            self.request(
+                self.request(latest), both["withdrawals.json"], operation="Restore"
+            )
+        self.assertEqual(len(both["withdrawals.json"]), 2)
+
+    def test_newer_main_conflict_and_pending_policy_changes_are_rejected(self):
+        pending = self.request()
+        latest = copy.deepcopy(pending)
+        latest["withdrawals.json"][0]["reason"] = "Newer explicit owner decision"
+        with self.assertRaisesRegex(sync.VerificationError, "conflicting"):
+            maintenance.rebase_pending(latest, self.current, pending)
+        pending["plugins.json"][SOURCE]["guid"] = "changed"
+        with self.assertRaisesRegex(sync.VerificationError, "protected"):
+            maintenance.rebase_pending(self.current, self.current, pending)
+
+    def test_gate_rejects_extra_changes_and_unauthorized_manifest_edits(self):
+        withdrawn = self.request()
+        self.assertFalse(
+            maintenance.scoped_validation(
+                self.github, self.current, withdrawn, {"plugins.json"}
+            )
+        )
+        for name in ("plugins.json", "history.json"):
+            bad = copy.deepcopy(withdrawn)
+            bad[name] = {}
+            with self.subTest(name=name), self.assertRaises(sync.VerificationError):
+                maintenance.scoped_validation(
+                    self.github, self.current, bad, maintenance.FILES
+                )
+        bad = copy.deepcopy(self.current)
+        bad["manifest.json"] = []
+        with self.assertRaisesRegex(sync.VerificationError, "manifest"):
+            maintenance.scoped_validation(
+                self.github, self.current, bad, maintenance.FILES
+            )
+
+    def run_mock(
+        self,
+        operation="Withdraw",
+        pending=None,
+        foreign=False,
+        advanced=False,
+        extra=False,
+        stale=True,
+        terminal=False,
+    ):
+        base = "a" * 40
+        head = "b" * 40
+        ancestor = "c" * 40
+        prs = (
+            []
+            if pending is None
+            else [
+                {
+                    "number": 7,
+                    "url": "https://github.com/" + sync.REPOSITORY + "/pull/7",
+                    "author": {
+                        "login": "other-app[bot]" if foreign else "catalog-app[bot]"
+                    },
+                    "body": "Previous authorized request",
+                    "baseRefName": "main",
+                    "isCrossRepository": False,
+                }
+            ]
+        )
+        revs = 0
+
+        def command(*args, **kwargs):
+            nonlocal revs
+            if args[:3] == ("gh", "pr", "list"):
+                if terminal and "all" in args:
+                    return json.dumps(
+                        [
+                            {
+                                "author": {
+                                    "login": "other-app[bot]"
+                                    if foreign
+                                    else "catalog-app[bot]"
+                                },
+                                "baseRefName": "main",
+                                "isCrossRepository": False,
+                                "state": "MERGED",
+                                "headRefOid": head,
+                            }
+                        ]
+                    )
+                return json.dumps(
+                    prs
+                    or (
+                        [
+                            {
+                                "number": 8,
+                                "url": "https://github.com/"
+                                + sync.REPOSITORY
+                                + "/pull/8",
+                            }
+                        ]
+                        if revs > 1
+                        else []
+                    )
+                )
+            if args[:2] == ("git", "ls-remote"):
+                return head if pending is not None or terminal else ""
+            if args[:2] == ("git", "rev-parse"):
+                if args[2] == "origin/main":
+                    revs += 1
+                    return "d" * 40 if advanced and revs > 1 else base
+                return head
+            if args[:2] == ("git", "merge-base"):
+                return ancestor if stale else base
+            if args[:2] == ("git", "diff"):
+                return "plugins.json" if extra else "manifest.json\nwithdrawals.json"
+            return ""
+
+        def load(root, ref=None):
+            return copy.deepcopy(pending if ref == head else self.current)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(maintenance.os.environ, ENV),
+            patch.object(maintenance, "GitHub", return_value=self.github),
+            patch.object(maintenance, "load", side_effect=load),
+            patch.object(maintenance, "command", side_effect=command) as calls,
+            patch.object(maintenance, "summary"),
+        ):
+            try:
+                maintenance.maintain(
+                    Path(directory), operation, SOURCE, "0.1.3.0", "Owner decision"
+                )
+            except Exception as error:
+                return calls.call_args_list, error
+            return calls.call_args_list, None
+
+    def test_git_request_uses_lease_protected_branch_and_automatic_protected_merge(
+        self,
+    ):
+        calls, error = self.run_mock()
+        self.assertIsNone(error)
+        arguments = [call.args for call in calls]
+        self.assertTrue(
+            any(
+                args[:2] == ("git", "push")
+                and args[2]
+                == "--force-with-lease=refs/heads/automation/catalog-maintenance:"
+                for args in arguments
+            )
+        )
+        self.assertTrue(
+            any(
+                args[:3] == ("gh", "pr", "merge") and "--auto" in args
+                for args in arguments
+            )
+        )
+        self.assertFalse(
+            any(
+                args[:2] == ("git", "push") and args[-1] == "main" for args in arguments
+            )
+        )
+
+    def test_cancelled_out_pending_requests_close_without_a_git_commit(self):
+        calls, error = self.run_mock(operation="Restore", pending=self.request())
+        self.assertIsNone(error)
+        self.assertTrue(any(call.args[:3] == ("gh", "pr", "close") for call in calls))
+        self.assertFalse(
+            any(call.args[:2] in {("git", "commit"), ("git", "push")} for call in calls)
+        )
+
+    def test_foreign_branch_protected_changes_and_advancing_main_never_push(self):
+        for settings in (
+            {"pending": self.request(), "foreign": True},
+            {"pending": self.request(), "extra": True},
+            {"advanced": True},
+        ):
+            calls, error = self.run_mock(**settings)
+            self.assertIsInstance(error, sync.VerificationError)
+            self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))
+
+    def test_unchanged_pending_retry_resumes_auto_merge_without_another_commit(self):
+        calls, error = self.run_mock(pending=self.request(), stale=False)
+        self.assertIsNone(error)
+        self.assertTrue(
+            any(
+                call.args[:3] == ("gh", "pr", "merge") and "--auto" in call.args
+                for call in calls
+            )
+        )
+        self.assertFalse(
+            any(call.args[:2] in {("git", "commit"), ("git", "push")} for call in calls)
+        )
+
+    def test_publication_and_maintenance_share_a_preserving_workflow_queue(self):
+        root = Path(__file__).resolve().parent.parent
+        workflows = root / ".github/workflows"
+        if (root / "catalog-repository").is_dir():
+            workflows = root / "catalog-repository/.github/workflows"
+        for name in ("maintenance.yml", "sync.yml"):
+            text = (workflows / name).read_text()
+            concurrency = text.split("\nconcurrency:\n", 1)[1].split("\njobs:", 1)[0]
+            values = dict(
+                line.strip().split(": ", 1)
+                for line in concurrency.splitlines()
+                if line.strip()
+            )
+            self.assertEqual(
+                values,
+                {
+                    "group": "catalog-update",
+                    "cancel-in-progress": "false",
+                    "queue": "max",
+                },
+            )
+
+    def test_completed_app_branch_can_be_reused_but_other_apps_cannot(self):
+        calls, error = self.run_mock(terminal=True)
+        self.assertIsNone(error)
+        self.assertTrue(
+            any(
+                call.args[:2] == ("git", "push")
+                and call.args[2].endswith(":" + "b" * 40)
+                for call in calls
+            )
+        )
+        calls, error = self.run_mock(terminal=True, foreign=True)
+        self.assertIsInstance(error, sync.VerificationError)
+        self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))
+
+    def test_validate_entrypoint_uses_protected_delta_instead_of_unrelated_network(
+        self,
+    ):
+        candidate = self.request()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, value in candidate.items():
+                (root / name).write_text(json.dumps(value))
+
+            def load(path, ref=None):
+                return self.current if ref else candidate
+
+            with (
+                patch.dict(sync.os.environ, {"CATALOG_BASE": "a" * 40}),
+                patch.object(
+                    sys, "argv", ["catalog_sync.py", "validate", "--root", directory]
+                ),
+                patch.object(
+                    sync, "command", return_value="manifest.json\nwithdrawals.json"
+                ),
+                patch.object(maintenance, "load", side_effect=load),
+                patch.object(
+                    sync,
+                    "verify_history",
+                    side_effect=OSError("unrelated metadata unavailable"),
+                ) as verify,
+            ):
+                sync.main()
+                verify.assert_not_called()
+
+    def test_non_main_dispatch_is_rejected_before_git_or_api(self):
+        with (
+            patch.dict(
+                maintenance.os.environ, dict(ENV, GITHUB_REF="refs/heads/other")
+            ),
+            patch.object(maintenance, "command") as command,
+            self.assertRaises(sync.VerificationError),
+        ):
+            maintenance.maintain(Path("/tmp"), "Withdraw", SOURCE, "0.1.3.0", "reason")
+        command.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

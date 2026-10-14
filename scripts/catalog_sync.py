@@ -744,6 +744,22 @@ def main() -> None:
         )
         return
     github = GitHub()
+    if args.command == "validate" and (base := os.environ.get("CATALOG_BASE", "")):
+        if not re.fullmatch(r"[a-f0-9]{40}", base):
+            raise VerificationError("Invalid protected comparison source")
+        if base != "0" * 40:
+            from catalog_maintenance import load, scoped_validation
+
+            changed = set(
+                command(
+                    "git", "diff", "--name-only", base, "HEAD", cwd=root
+                ).splitlines()
+            )
+            if scoped_validation(github, load(root, base), load(root), changed):
+                print(
+                    "PASS: exact maintenance delta; restored versions verified. Unrelated integrity checks remain diagnostic and scheduled."
+                )
+                return
     try:
         verified = (
             verify_history(github, plugins, history, withdrawals)

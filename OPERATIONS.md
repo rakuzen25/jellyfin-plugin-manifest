@@ -69,27 +69,30 @@ Daily reconciliation runs at **06:23 UTC** and the Actions UI also offers manual
 
 Missing assets, API/rate-limit errors, moved tags or checksum conflicts fail before a candidate is published. Existing manifest entries remain intact. Automation opens or updates a deduplicated integrity issue and closes its issues after full recovery. Retry the plugin's **Notify shared plugin catalog** workflow with the published tag, or the catalog's **Reconcile plugin catalog** workflow without arguments.
 
-## Explicit withdrawals
+## Withdraw or restore a version from Actions
 
-In a manually reviewed catalog branch, add an entry to `withdrawals.json`:
+In **rakuzen25/jellyfin-plugin-manifest → Actions → Withdraw or restore version → Run workflow**, choose branch **main** and enter:
 
-```json
-[
-  {
-    "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
-    "version": "0.1.3.0",
-    "reason": "Describe why the owner withdrew this version"
-  }
-]
-```
+- **Operation:** `Withdraw` or `Restore`.
+- **Repository:** the allowlisted plugin repository, currently `rakuzen25/jellyfin-plugin-lyricbridge`.
+- **Version:** its exact catalog version, for example `0.1.3.0` (four components).
+- **Reason:** the owner decision recorded with your actor name and workflow-run link.
 
-Then regenerate the served manifest:
+Running the workflow authorizes the proposal. The shared App opens or updates its dedicated `automation/catalog-maintenance` PR and enables squash auto-merge behind the existing `catalog-validate` and up-to-date requirements. The Actions summary links to the PR; auto-merge is requested, not reported as already completed. No extra credentials, environment approvals, protection bypass or direct main push is used.
 
-```sh
-python3 scripts/catalog_sync.py withdraw
-```
+Withdrawal changes only `withdrawals.json` and the generated `manifest.json`. History, release files and already installed plugins are retained. Reconciliation cannot re-add an excluded version. Restoration freshly verifies the original stable release, source, receipt and hashes before removing its exclusion; failures leave pending decisions intact. Cancelling an unmerged withdrawal restores the existing main state without introducing a new version and therefore needs no remote verification. Repeating a completed operation is a successful no-op.
 
-Commit the withdrawal and generated manifest in the same PR and merge after `catalog-validate` passes. Keep `history.json`: it preserves the previous artifact identity. Daily reconciliation skips withdrawn versions and cannot restore them. Do not edit or replace an existing version's URL/checksum. Publish a new version for corrected binaries. Removing a withdrawal is a separate explicit owner decision and must pass current public verification again.
+Requests share a non-cancelling `catalog-update` queue with release additions. `queue: max` preserves up to 100 pending runs; requests beyond GitHub's queue capacity must be retried. Execution order follows the runner queue, so the latest successfully processed request determines a version's pending state. Several unmerged requests accumulate on the maintenance branch. A later opposite request can cancel an earlier pending change; if nothing remains, the App closes that PR without committing to main. Completed App-owned branches can be reused safely even when automatic branch deletion is disabled.
+
+When main advances, the updater reapplies only pending maintenance decisions to the new base. A conflicting newer main decision fails clearly rather than being overwritten. If the summary says main advanced during preparation, rerun the request. If it reports a conflicting owner decision or non-App branch, inspect and resolve the existing PR first. A failed refresh can leave auto-merge disabled; an unchanged explicit retry safely resumes it after validation.
+
+`catalog-validate` recognizes a narrow maintenance-only diff against the authenticated PR base or preceding main commit. It proves the exact exclusion/removal projection while keeping policy, history and unrelated records unchanged. Only versions reintroduced by restoration require remote checks. Unrelated network/integrity failures cannot prevent a safe withdrawal. Failure to mint the optional read-only source token also does not block a removal; a restoration still fails unless its required public evidence can be verified. A separate non-blocking audit reports remaining catalog problems in Actions; full scheduled reconciliation continues to report persistent problems as issues. Ordinary addition/policy/tooling PRs retain full verification.
+
+The maintenance Action and its tests must land before attempting to use it. Existing `catalog-validate` protection is unchanged. After pushing, confirm a real main-branch dispatch creates an App-owned PR, that failed target verification blocks restoration, and that auto-merge waits for the required check. These GitHub observations have not been established by mocked local tests.
+
+For manually reviewed offline edits, the existing `python3 scripts/catalog_sync.py withdraw` command still regenerates the manifest after editing exclusions. Keep history and submit both exclusions and manifest together.
+
+The installed Actionlint 1.7.12 predates GitHub's documented `concurrency.queue` key. Local linting ignores only its unsupported-key diagnostic, with a focused policy test checking that both state-changing workflows use the same `catalog-update`, `queue: max`, `cancel-in-progress: false` settings. All other Actionlint diagnostics remain enabled.
 
 ## Onboard another plugin
 

@@ -18,11 +18,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: .python-version
-      - run: python3 tests/CatalogPublication.py
+      - run: python3 tests/CatalogPublication.py && python3 tests/CatalogMaintenance.py
       - name: Verify catalog and public release provenance
         env:
           GH_TOKEN: ${{ github.token }}
+          CATALOG_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
         run: python3 scripts/catalog_sync.py validate
