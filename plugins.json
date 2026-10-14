@@ -1,0 +1,10 @@
+{
+    "rakuzen25/jellyfin-plugin-lyricbridge": {
+        "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
+        "prefix": "lyricbridge",
+        "receipt_schema": 3,
+        "groups": ["metadata", "frontend", "backend", "tooling", "workflow", "rendering", "performance", "artifacts"],
+        "validation_workflows": [".github/workflows/release-please.yml", ".github/workflows/release.yml", ".github/workflows/validate.yml"],
+        "attestation_workflow": ".github/workflows/release.yml"
+    }
+}

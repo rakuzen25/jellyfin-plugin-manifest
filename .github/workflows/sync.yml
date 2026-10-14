@@ -1,0 +1,50 @@
+name: Reconcile plugin catalog
+on:
+  repository_dispatch:
+    types: [plugin-published]
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: catalog-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PLUGIN_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: read
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version-file: .python-version
+      - name: Create read-only source token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: source
+        with:
+          client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PLUGIN_APP_PRIVATE_KEY }}
+          owner: rakuzen25
+          repositories: jellyfin-plugin-lyricbridge
+          permission-contents: read
+          permission-actions: read
+          permission-attestations: read
+      - name: Reconcile all allowlisted releases (dispatch payload is only a hint)
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SOURCE_GH_TOKEN: ${{ steps.source.outputs.token }}
+          PLUGIN_APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: python3 scripts/catalog_sync.py sync

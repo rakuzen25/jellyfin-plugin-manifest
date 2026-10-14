@@ -1,0 +1,5 @@
+# Actionlint 1.7.12's hosted-runner catalog predates Ubuntu 26.04.
+# Register only this approved label; all other workflow checks remain enabled.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
