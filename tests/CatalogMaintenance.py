@@ -2,22 +2,24 @@
 
 import copy
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import catalog_core as core
 import catalog_maintenance as maintenance
+import catalog_maintenance_policy as policy
 import catalog_sync as sync
-from CatalogPublication import FakeGitHub, POLICY, SOURCE, GUID
+from CatalogPublication import GUID, POLICY, SOURCE, FakeGitHub
 
-RUN = "https://github.com/" + sync.REPOSITORY + "/actions/runs/123"
+RUN = "https://github.com/" + core.REPOSITORY + "/actions/runs/123"
 ENV = {
     "GITHUB_REF": "refs/heads/main",
     "GITHUB_EVENT_NAME": "workflow_dispatch",
-    "GITHUB_REPOSITORY": sync.REPOSITORY,
+    "GITHUB_REPOSITORY": core.REPOSITORY,
     "GITHUB_ACTOR": "owner",
     "GITHUB_RUN_ID": "123",
     "PLUGIN_APP_SLUG": "catalog-app",
@@ -28,12 +30,12 @@ class MaintenanceTests(unittest.TestCase):
     def setUp(self):
         self.github = FakeGitHub()
         self.plugins = {SOURCE: POLICY}
-        history = sync.reconcile(self.github, self.plugins, {}, [])
+        history = core.reconcile(self.github, self.plugins, {}, [])
         self.current: dict = {
             "plugins.json": self.plugins,
             "history.json": history,
             "withdrawals.json": [],
-            "manifest.json": sync.render(history, [], self.plugins),
+            "manifest.json": core.render(history, [], self.plugins),
         }
 
     def request(
@@ -45,11 +47,14 @@ class MaintenanceTests(unittest.TestCase):
         **overrides,
     ):
         state = self.current if state is None else state
-        args = dict(
-            repository=SOURCE, reason="Owner decision", actor="owner", run_url=RUN
-        )
+        args = {
+            "repository": SOURCE,
+            "reason": "Owner decision",
+            "actor": "owner",
+            "run_url": RUN,
+        }
         args.update(overrides)
-        return maintenance.request_change(
+        return policy.request_change(
             self.github,
             state,
             state["withdrawals.json"] if pending is None else pending,
@@ -61,7 +66,7 @@ class MaintenanceTests(unittest.TestCase):
     def test_withdrawal_and_duplicate_are_local_and_preserve_history(self):
         before = copy.deepcopy(self.current)
         with patch.object(
-            maintenance,
+            policy,
             "verify_history",
             side_effect=OSError("unrelated provider unavailable"),
         ) as verify:
@@ -81,18 +86,18 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(restored["manifest.json"], self.current["manifest.json"])
         with (
             patch.object(
-                maintenance,
+                policy,
                 "verify_history",
-                side_effect=sync.VerificationError("changed archive"),
+                side_effect=core.VerificationError("changed archive"),
             ),
-            self.assertRaises(sync.VerificationError),
+            self.assertRaises(core.VerificationError),
         ):
             self.request(withdrawn, operation="Restore")
         self.assertEqual(withdrawn, before)
-        with patch.object(maintenance, "verify_history") as verify:
+        with patch.object(policy, "verify_history") as verify:
             self.request(withdrawn, operation="Restore")
             self.assertEqual(set(verify.call_args.args[2]), {GUID + "/0.1.3.0"})
-        with patch.object(maintenance, "verify_history") as verify:
+        with patch.object(policy, "verify_history") as verify:
             self.assertEqual(
                 self.request(self.current, operation="Restore"), self.current
             )
@@ -107,13 +112,13 @@ class MaintenanceTests(unittest.TestCase):
         ):
             with (
                 self.subTest(overrides=overrides),
-                self.assertRaises(sync.VerificationError),
+                self.assertRaises(core.VerificationError),
             ):
                 self.request(**overrides)
         for version in ("0.1.3", "01.1.3.0", "0.1.99.0"):
             with (
                 self.subTest(version=version),
-                self.assertRaises(sync.VerificationError),
+                self.assertRaises(core.VerificationError),
             ):
                 self.request(version=version)
 
@@ -123,11 +128,11 @@ class MaintenanceTests(unittest.TestCase):
         pending = self.request()
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
         latest = copy.deepcopy(self.current)
-        latest["history.json"] = sync.reconcile(
+        latest["history.json"] = core.reconcile(
             self.github, self.plugins, latest["history.json"], []
         )
-        latest["manifest.json"] = sync.render(latest["history.json"], [], self.plugins)
-        pending_rows = maintenance.rebase_pending(latest, self.current, pending)
+        latest["manifest.json"] = core.render(latest["history.json"], [], self.plugins)
+        pending_rows = policy.rebase_pending(latest, self.current, pending)
         both = self.request(latest, pending_rows, version="0.1.4.0")
         self.assertEqual(
             {row["version"] for row in both["withdrawals.json"]}, {"0.1.3.0", "0.1.4.0"}
@@ -138,7 +143,7 @@ class MaintenanceTests(unittest.TestCase):
         )
         with (
             patch.object(
-                maintenance, "verify_history", side_effect=OSError("status unavailable")
+                policy, "verify_history", side_effect=OSError("status unavailable")
             ),
             self.assertRaises(OSError),
         ):
@@ -151,32 +156,28 @@ class MaintenanceTests(unittest.TestCase):
         pending = self.request()
         latest = copy.deepcopy(pending)
         latest["withdrawals.json"][0]["reason"] = "Newer explicit owner decision"
-        with self.assertRaisesRegex(sync.VerificationError, "conflicting"):
-            maintenance.rebase_pending(latest, self.current, pending)
+        with self.assertRaisesRegex(core.VerificationError, "conflicting"):
+            policy.rebase_pending(latest, self.current, pending)
         pending["plugins.json"][SOURCE]["guid"] = "changed"
-        with self.assertRaisesRegex(sync.VerificationError, "protected"):
-            maintenance.rebase_pending(self.current, self.current, pending)
+        with self.assertRaisesRegex(core.VerificationError, "protected"):
+            policy.rebase_pending(self.current, self.current, pending)
 
     def test_gate_rejects_extra_changes_and_unauthorized_manifest_edits(self):
         withdrawn = self.request()
         self.assertFalse(
-            maintenance.scoped_validation(
+            policy.scoped_validation(
                 self.github, self.current, withdrawn, {"plugins.json"}
             )
         )
         for name in ("plugins.json", "history.json"):
             bad = copy.deepcopy(withdrawn)
             bad[name] = {}
-            with self.subTest(name=name), self.assertRaises(sync.VerificationError):
-                maintenance.scoped_validation(
-                    self.github, self.current, bad, maintenance.FILES
-                )
+            with self.subTest(name=name), self.assertRaises(core.VerificationError):
+                policy.scoped_validation(self.github, self.current, bad, policy.FILES)
         bad = copy.deepcopy(self.current)
         bad["manifest.json"] = []
-        with self.assertRaisesRegex(sync.VerificationError, "manifest"):
-            maintenance.scoped_validation(
-                self.github, self.current, bad, maintenance.FILES
-            )
+        with self.assertRaisesRegex(core.VerificationError, "manifest"):
+            policy.scoped_validation(self.github, self.current, bad, policy.FILES)
 
     def run_mock(
         self,
@@ -197,7 +198,7 @@ class MaintenanceTests(unittest.TestCase):
             else [
                 {
                     "number": 7,
-                    "url": "https://github.com/" + sync.REPOSITORY + "/pull/7",
+                    "url": "https://github.com/" + core.REPOSITORY + "/pull/7",
                     "author": {
                         "login": "other-app[bot]" if foreign else "catalog-app[bot]"
                     },
@@ -208,9 +209,14 @@ class MaintenanceTests(unittest.TestCase):
             ]
         )
         revs = 0
+        self.audit_bodies = []
 
         def command(*args, **kwargs):
             nonlocal revs
+            if "--body-file" in args:
+                self.audit_bodies.append(
+                    Path(args[args.index("--body-file") + 1]).read_text()
+                )
             if args[:3] == ("gh", "pr", "list"):
                 if terminal and "all" in args:
                     return json.dumps(
@@ -234,8 +240,11 @@ class MaintenanceTests(unittest.TestCase):
                         [
                             {
                                 "number": 8,
+                                "author": {"login": "catalog-app[bot]"},
+                                "baseRefName": "main",
+                                "isCrossRepository": False,
                                 "url": "https://github.com/"
-                                + sync.REPOSITORY
+                                + core.REPOSITORY
                                 + "/pull/8",
                             }
                         ]
@@ -271,7 +280,7 @@ class MaintenanceTests(unittest.TestCase):
                 maintenance.maintain(
                     Path(directory), operation, SOURCE, "0.1.3.0", "Owner decision"
                 )
-            except Exception as error:
+            except core.VerificationError as error:
                 return calls.call_args_list, error
             return calls.call_args_list, None
 
@@ -316,7 +325,7 @@ class MaintenanceTests(unittest.TestCase):
             {"advanced": True},
         ):
             calls, error = self.run_mock(**settings)
-            self.assertIsInstance(error, sync.VerificationError)
+            self.assertIsInstance(error, core.VerificationError)
             self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))
 
     def test_unchanged_pending_retry_resumes_auto_merge_without_another_commit(self):
@@ -332,11 +341,37 @@ class MaintenanceTests(unittest.TestCase):
             any(call.args[:2] in {("git", "commit"), ("git", "push")} for call in calls)
         )
 
+        self.assertTrue(self.audit_bodies[0].startswith("Previous authorized request"))
+        self.assertIn("Withdraw " + SOURCE + " 0.1.3.0 by @owner", self.audit_bodies[0])
+        self.assertIn(RUN, self.audit_bodies[0])
+
+    def test_failed_refresh_disables_auto_merge_before_writing_or_editing_audit(self):
+        pr = {"number": 7, "body": "Previous authorized request", "url": "fixture"}
+        branch = maintenance.BranchState(pr, "b" * 40)
+        request = maintenance.Request(
+            "Withdraw", SOURCE, "0.1.3.0", "Owner decision", "owner", RUN
+        )
+        proposal = maintenance.Proposal(
+            maintenance.Outcome.UPDATED, self.request(), "New request"
+        )
+        with (
+            patch.object(maintenance, "command") as command,
+            patch.object(
+                maintenance, "write_proposal", side_effect=OSError("push failed")
+            ),
+            patch.object(maintenance, "update_body") as update,
+            self.assertRaises(OSError),
+        ):
+            maintenance.publish_proposal(
+                Path("/tmp"), "a" * 40, branch, request, proposal
+            )
+        self.assertEqual(len(command.call_args_list), 1)
+        self.assertIn("--disable-auto", command.call_args.args)
+        update.assert_not_called()
+
     def test_publication_and_maintenance_share_a_preserving_workflow_queue(self):
         root = Path(__file__).resolve().parent.parent
         workflows = root / ".github/workflows"
-        if (root / "catalog-repository").is_dir():
-            workflows = root / "catalog-repository/.github/workflows"
         for name in ("maintenance.yml", "sync.yml"):
             text = (workflows / name).read_text()
             concurrency = text.split("\nconcurrency:\n", 1)[1].split("\njobs:", 1)[0]
@@ -365,7 +400,7 @@ class MaintenanceTests(unittest.TestCase):
             )
         )
         calls, error = self.run_mock(terminal=True, foreign=True)
-        self.assertIsInstance(error, sync.VerificationError)
+        self.assertIsInstance(error, core.VerificationError)
         self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))
 
     def test_validate_entrypoint_uses_protected_delta_instead_of_unrelated_network(
@@ -388,7 +423,7 @@ class MaintenanceTests(unittest.TestCase):
                 patch.object(
                     sync, "command", return_value="manifest.json\nwithdrawals.json"
                 ),
-                patch.object(maintenance, "load", side_effect=load),
+                patch.object(sync, "load", side_effect=load),
                 patch.object(
                     sync,
                     "verify_history",
@@ -404,7 +439,7 @@ class MaintenanceTests(unittest.TestCase):
                 maintenance.os.environ, dict(ENV, GITHUB_REF="refs/heads/other")
             ),
             patch.object(maintenance, "command") as command,
-            self.assertRaises(sync.VerificationError),
+            self.assertRaises(core.VerificationError),
         ):
             maintenance.maintain(Path("/tmp"), "Withdraw", SOURCE, "0.1.3.0", "reason")
         command.assert_not_called()

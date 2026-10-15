@@ -2,12 +2,12 @@
 
 import argparse
 import copy
-from datetime import datetime
 import json
-from pathlib import Path
 import re
-from urllib.parse import urlparse
 import uuid
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
 
 
 def validate_catalog(value: object) -> list[dict]:

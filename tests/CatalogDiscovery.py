@@ -8,7 +8,6 @@ import argparse
 import functools
 import http.server
 import json
-from pathlib import Path
 import secrets
 import socket
 import subprocess
@@ -18,6 +17,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
+from urllib.parse import quote, urlencode
 
 IMAGE = "jellyfin/jellyfin@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037"
 
@@ -25,6 +26,11 @@ IMAGE = "jellyfin/jellyfin@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657cc
 class QuietFiles(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         pass
+
+
+def _install_path(name: str, guid: str, version: str) -> str:
+    query = urlencode({"assemblyGuid": guid, "version": version})
+    return f"/Packages/Installed/{quote(name, safe='')}?{query}"
 
 
 def discovery(manifest: Path) -> None:
@@ -149,7 +155,7 @@ def discovery(manifest: Path) -> None:
                     raise AssertionError("Catalog name changed during discovery")
                 version = entry["versions"][0]["version"]
                 call(
-                    f"/Packages/Installed/{entry['name']}?assemblyGuid={entry['guid']}&version={version}",
+                    _install_path(entry["name"], entry["guid"], version),
                     "POST",
                     {},
                 )

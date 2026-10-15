@@ -4,14 +4,15 @@ import copy
 import hashlib
 import io
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 import zipfile
+from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import catalog_core as core
 import catalog_sync as sync
 
 SOURCE = "rakuzen25/jellyfin-plugin-lyricbridge"
@@ -36,7 +37,7 @@ POLICY = {
 }
 
 
-class FakeGitHub(sync.GitHub):
+class FakeGitHub(core.GitHub):
     def __init__(self):
         self.commit = "a" * 40
         self.releases = []
@@ -62,7 +63,10 @@ class FakeGitHub(sync.GitHub):
         binary = f"lyricbridge-{version}.zip"
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as zipped:
-            zipped.writestr("LyricBridge.dll", "fixture")
+            assembly = zipfile.ZipInfo(
+                "LyricBridge.dll", date_time=(2026, 10, 14, 0, 0, 0)
+            )
+            zipped.writestr(assembly, "fixture")
         files = {
             binary: buffer.getvalue(),
             f"lyricbridge-web-{version}.zip": b"web",
@@ -146,7 +150,19 @@ class CatalogPublicationTests(unittest.TestCase):
         self.plugins = {SOURCE: POLICY}
 
     def history(self):
-        return sync.reconcile(self.github, self.plugins, {}, [])
+        return core.reconcile(self.github, self.plugins, {}, [])
+
+    def test_release_fixture_bytes_do_not_depend_on_the_clock(self):
+        with patch(
+            "zipfile.time.localtime", return_value=(2026, 1, 1, 0, 0, 0, 3, 1, 0)
+        ):
+            first = FakeGitHub()
+        with patch(
+            "zipfile.time.localtime", return_value=(2026, 2, 1, 0, 0, 0, 6, 32, 0)
+        ):
+            second = FakeGitHub()
+        self.assertEqual(first.files, second.files)
+        self.assertEqual(first.receipts, second.receipts)
 
     def test_initial_latest_only_then_missed_updates_and_idempotent_retries(self):
         self.github.add("0.1.2", "2026-10-13T00:00:00Z", 2)
@@ -154,12 +170,12 @@ class CatalogPublicationTests(unittest.TestCase):
         self.assertEqual(list(first), [GUID + "/0.1.3.0"])
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 3)
         self.github.add("0.1.5", "2026-10-16T00:00:00Z", 4)
-        recovered = sync.reconcile(self.github, self.plugins, first, [])
+        recovered = core.reconcile(self.github, self.plugins, first, [])
         self.assertEqual(len(recovered), 3)
         self.assertEqual(
-            sync.reconcile(self.github, self.plugins, recovered, []), recovered
+            core.reconcile(self.github, self.plugins, recovered, []), recovered
         )
-        manifest = sync.render(recovered, [], self.plugins)
+        manifest = core.render(recovered, [], self.plugins)
         self.assertEqual(manifest[0]["name"], "LyricBridge 0.1.5")
         self.assertEqual(
             [item["version"] for item in manifest[0]["versions"]],
@@ -170,8 +186,8 @@ class CatalogPublicationTests(unittest.TestCase):
         for flag in ("draft", "prerelease"):
             self.github.releases[0][flag] = True
             self.assertEqual(self.history(), {})
-            with self.assertRaises(sync.VerificationError):
-                sync.verify_release(
+            with self.assertRaises(core.VerificationError):
+                core.verify_release(
                     self.github, SOURCE, POLICY, self.github.releases[0]
                 )
             self.github.releases[0][flag] = False
@@ -187,17 +203,17 @@ class CatalogPublicationTests(unittest.TestCase):
         ):
             original = receipt[field]
             receipt[field] = bad
-            with self.subTest(field=field), self.assertRaises(sync.VerificationError):
+            with self.subTest(field=field), self.assertRaises(core.VerificationError):
                 self.history()
             receipt[field] = original
         for group in GROUPS:
             receipt["groups"][group] = "failure"
-            with self.subTest(group=group), self.assertRaises(sync.VerificationError):
+            with self.subTest(group=group), self.assertRaises(core.VerificationError):
                 self.history()
             receipt["groups"][group] = "success"
         policy = dict(POLICY, guid="b" * 36)
-        with self.assertRaises(sync.VerificationError):
-            sync.verify_release(self.github, SOURCE, policy, self.github.releases[0])
+        with self.assertRaises(core.VerificationError):
+            core.verify_release(self.github, SOURCE, policy, self.github.releases[0])
 
     def test_fork_pr_unapproved_workflow_and_missing_gate_fail(self):
         for field, bad in (
@@ -209,11 +225,11 @@ class CatalogPublicationTests(unittest.TestCase):
         ):
             original = self.github.run[field]
             self.github.run[field] = bad
-            with self.subTest(field=field), self.assertRaises(sync.VerificationError):
+            with self.subTest(field=field), self.assertRaises(core.VerificationError):
                 self.history()
             self.github.run[field] = original
         self.github.jobs = []
-        with self.assertRaises(sync.VerificationError):
+        with self.assertRaises(core.VerificationError):
             self.history()
 
     def test_corrupt_or_unavailable_assets_and_moved_tags_preserve_input(self):
@@ -221,31 +237,73 @@ class CatalogPublicationTests(unittest.TestCase):
         before = copy.deepcopy(history)
         url = self.github.releases[0]["assets"][0]["browser_download_url"]
         self.github.files[url] = b"changed"
-        with self.assertRaises(sync.VerificationError):
-            sync.reconcile(self.github, self.plugins, history, [])
+        with self.assertRaises(core.VerificationError):
+            core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(history, before)
         self.github = FakeGitHub()
         self.github.commit = "b" * 40
-        with self.assertRaises(sync.VerificationError):
-            sync.reconcile(self.github, self.plugins, history, [])
+        with self.assertRaises(core.VerificationError):
+            core.reconcile(self.github, self.plugins, history, [])
         self.github = FakeGitHub()
         self.github.releases[0]["assets"].pop()
-        with self.assertRaises(sync.VerificationError):
-            sync.reconcile(self.github, self.plugins, history, [])
+        with self.assertRaises(core.VerificationError):
+            core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(history, before)
 
     def test_explicit_withdrawal_survives_retries_and_release_removal(self):
         history = self.history()
         withdrawn = [{"guid": GUID, "version": "0.1.3.0", "reason": "Owner withdrawal"}]
         self.github.releases = []
-        with self.assertRaises(sync.VerificationError):
-            sync.reconcile(self.github, self.plugins, history, [])
+        with self.assertRaises(core.VerificationError):
+            core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(
-            sync.reconcile(self.github, self.plugins, history, withdrawn), history
+            core.reconcile(self.github, self.plugins, history, withdrawn), history
         )
-        self.assertEqual(sync.render(history, withdrawn, self.plugins), [])
-        with self.assertRaises(sync.VerificationError):
-            sync.withdrawal_keys([dict(withdrawn[0], reason="")], self.plugins)
+        self.assertEqual(core.render(history, withdrawn, self.plugins), [])
+        with self.assertRaises(core.VerificationError):
+            core.withdrawal_keys([dict(withdrawn[0], reason="")], self.plugins)
+
+    def test_noncanonical_withdrawal_versions_fail_with_a_clear_error(self):
+        for version in (
+            "00.1.3.0",
+            "0.01.3.0",
+            "0.1.03.0",
+            "0.1.3.00",
+            "0.1.3",
+            "0.1.3.0.0",
+            "\u0660.1.3.0",
+            "+0.1.3.0",
+            None,
+            13,
+        ):
+            with (
+                self.subTest(version=version),
+                self.assertRaisesRegex(
+                    core.VerificationError,
+                    "four numeric components without leading zeros",
+                ),
+            ):
+                core.withdrawal_keys(
+                    [{"guid": GUID, "version": version, "reason": "Owner withdrawal"}],
+                    self.plugins,
+                )
+
+    def test_canonical_withdrawal_versions_keep_their_exact_identity(self):
+        for version in ("0.0.0.0", "0.1.3.0", "10.20.30.40"):
+            with self.subTest(version=version):
+                self.assertEqual(
+                    core.withdrawal_keys(
+                        [
+                            {
+                                "guid": GUID,
+                                "version": version,
+                                "reason": "Owner withdrawal",
+                            }
+                        ],
+                        self.plugins,
+                    ),
+                    {GUID + "/" + version},
+                )
 
     def test_network_failure_keeps_history_unchanged(self):
         history = self.history()
@@ -253,13 +311,13 @@ class CatalogPublicationTests(unittest.TestCase):
             patch.object(self.github, "pages", side_effect=OSError("rate limit")),
             self.assertRaises(OSError),
         ):
-            sync.reconcile(self.github, self.plugins, history, [])
+            core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(len(history), 1)
 
     def test_public_receipt_requires_attestation_and_bootstrap_cannot_use_expired_artifacts(
         self,
     ):
-        github = sync.GitHub()
+        github = core.GitHub()
         release = copy.deepcopy(self.github.releases[0])
         release["assets"].append(
             {
@@ -287,9 +345,9 @@ class CatalogPublicationTests(unittest.TestCase):
                 patch.object(
                     github,
                     "attest",
-                    side_effect=sync.VerificationError("invalid signature"),
+                    side_effect=core.VerificationError("invalid signature"),
                 ),
-                self.assertRaises(sync.VerificationError),
+                self.assertRaises(core.VerificationError),
             ):
                 github.receipt(SOURCE, POLICY, release, directory, self.github.commit)
             release["assets"].pop()
@@ -306,7 +364,7 @@ class CatalogPublicationTests(unittest.TestCase):
                 ),
                 patch.object(github, "download") as download_mock,
             ):
-                with self.assertRaisesRegex(sync.VerificationError, "waiting"):
+                with self.assertRaisesRegex(core.VerificationError, "waiting"):
                     github.receipt(
                         SOURCE, POLICY, release, directory, self.github.commit
                     )
@@ -325,10 +383,11 @@ class CatalogPublicationTests(unittest.TestCase):
                 }
             }
         ]
-        github = sync.GitHub()
+        github = core.GitHub()
         with (
+            patch.dict(core.os.environ, {"SOURCE_GH_TOKEN": "fixture-source-token"}),
             patch.object(
-                sync.subprocess, "check_output", return_value=json.dumps(output)
+                core.subprocess, "check_output", return_value=json.dumps(output)
             ),
             patch.object(
                 github,
@@ -341,8 +400,9 @@ class CatalogPublicationTests(unittest.TestCase):
         ):
             github.attest(SOURCE, POLICY, Path("validation.json"))
         with (
+            patch.dict(core.os.environ, {"SOURCE_GH_TOKEN": "fixture-source-token"}),
             patch.object(
-                sync.subprocess, "check_output", return_value=json.dumps(output)
+                core.subprocess, "check_output", return_value=json.dumps(output)
             ),
             patch.object(
                 github,
@@ -352,7 +412,7 @@ class CatalogPublicationTests(unittest.TestCase):
                     {"jobs": [{"name": "attach", "conclusion": "failure"}]},
                 ],
             ),
-            self.assertRaises(sync.VerificationError),
+            self.assertRaises(core.VerificationError),
         ):
             github.attest(SOURCE, POLICY, Path("validation.json"))
 
@@ -361,7 +421,7 @@ class CatalogPublicationTests(unittest.TestCase):
     ):
         import base64
 
-        github = sync.GitHub()
+        github = core.GitHub()
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as zipped:
             zipped.writestr(
@@ -384,68 +444,36 @@ class CatalogPublicationTests(unittest.TestCase):
         ):
             with (
                 patch.object(github, "json", return_value=broken),
-                self.assertRaises(sync.VerificationError),
+                self.assertRaises(core.VerificationError),
             ):
                 github.bootstrap_receipt(SOURCE, proof)
 
-    def test_pr_updates_are_idempotent_app_owned_and_cannot_auto_merge_policy_changes(
+    def test_noop_and_foreign_publication_pr_do_not_run_git_commands(
         self,
     ):
         root = Path("/tmp/catalog-test")
         with patch.object(sync, "command") as command:
-            sync.publish_pr(root, {}, {})
+            sync.publish_pr(root, "a" * 40, {}, {})
             command.assert_not_called()
-
-        def fake(*args, **kwargs):
-            if args[:3] == ("gh", "pr", "list"):
-                return json.dumps([{"number": 7, "author": {"login": "test-app[bot]"}}])
-            if args[:2] == ("git", "ls-remote"):
-                return "existing"
-            if args[:2] == ("git", "diff"):
-                return "manifest.json\nhistory.json"
-            return ""
-
-        with (
-            patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
-            patch.object(sync, "command", side_effect=fake) as command,
-        ):
-            sync.publish_pr(root, {}, {"new": True})
-            calls = [call.args for call in command.call_args_list]
-            self.assertEqual(
-                sum(args[:3] == ("gh", "pr", "merge") for args in calls), 1
-            )
-            self.assertFalse(any(args[:3] == ("gh", "pr", "create") for args in calls))
-            self.assertTrue(
-                any(args[:3] == ("git", "push", "--force-with-lease") for args in calls)
-            )
-
-        def changed_policy(*args, **kwargs):
-            return (
-                "plugins.json" if args[:2] == ("git", "diff") else fake(*args, **kwargs)
-            )
-
-        with (
-            patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
-            patch.object(sync, "command", side_effect=changed_policy) as command,
-            self.assertRaises(sync.VerificationError),
-        ):
-            sync.publish_pr(root, {}, {"new": True})
-        self.assertFalse(
-            any(call.args[:2] == ("git", "push") for call in command.call_args_list)
-        )
         with (
             patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
             patch.object(
                 sync,
-                "command",
-                return_value=json.dumps(
-                    [{"number": 7, "author": {"login": "other-bot[bot]"}}]
-                ),
-            ) as command,
-            self.assertRaises(sync.VerificationError),
+                "publication_prs",
+                return_value=[
+                    {
+                        "number": 7,
+                        "author": {"login": "other-bot[bot]"},
+                        "baseRefName": "main",
+                        "isCrossRepository": False,
+                    }
+                ],
+            ),
+            patch.object(sync, "command") as command,
+            self.assertRaises(core.VerificationError),
         ):
-            sync.publish_pr(root, {}, {"new": True})
-        self.assertEqual(command.call_count, 1)
+            sync.publish_pr(root, "a" * 40, {}, {"new": True})
+        command.assert_not_called()
 
     def test_issue_retry_does_not_create_duplicates_or_add_comments(self):
         import os
@@ -476,8 +504,8 @@ class CatalogPublicationTests(unittest.TestCase):
             self.assertEqual(command.call_args.args[:3], ("gh", "issue", "close"))
 
     def test_empty_catalog_is_valid_while_waiting_for_first_verified_release(self):
-        self.assertEqual(sync.verify_history(self.github, self.plugins, {}, []), {})
-        self.assertEqual(sync.render({}, [], self.plugins), [])
+        self.assertEqual(core.verify_history(self.github, self.plugins, {}, []), {})
+        self.assertEqual(core.render({}, [], self.plugins), [])
 
 
 if __name__ == "__main__":

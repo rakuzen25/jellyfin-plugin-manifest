@@ -1,164 +1,17 @@
-"""Explicit version maintenance, protected-base validation and App-owned PRs."""
+"""Explicit version maintenance and App-owned PR orchestration."""
 
 import argparse
-import copy
 import json
 import os
-from pathlib import Path
-import re
 import tempfile
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 
-from catalog_sync import (
-    GitHub,
-    REPOSITORY,
-    VerificationError,
-    command,
-    render,
-    verify_history,
-    withdrawal_keys,
-)
+from catalog_core import REPOSITORY, GitHub, VerificationError, command
+from catalog_maintenance_policy import FILES, load, rebase_pending, request_change
 
 BRANCH = "automation/catalog-maintenance"
-FILES = {"withdrawals.json", "manifest.json"}
-
-
-def mapping(rows: list[dict]) -> dict[str, dict]:
-    return {row["guid"] + "/" + row["version"]: row for row in rows}
-
-
-def load(root: Path, ref: str | None = None) -> dict:
-    return {
-        name: json.loads(
-            command("git", "show", ref + ":" + name, cwd=root)
-            if ref
-            else (root / name).read_text()
-        )
-        for name in (
-            "plugins.json",
-            "history.json",
-            "withdrawals.json",
-            "manifest.json",
-        )
-    }
-
-
-def scoped_validation(
-    github: GitHub, base: dict, candidate: dict, changed: set[str]
-) -> bool:
-    """Only proven maintenance deltas get a narrow gate; additions remain full."""
-    if not changed or not changed.issubset(FILES):
-        return False
-    if (
-        base["plugins.json"] != candidate["plugins.json"]
-        or base["history.json"] != candidate["history.json"]
-    ):
-        raise VerificationError("Maintenance cannot modify policy or history")
-    plugins, history = base["plugins.json"], base["history.json"]
-    before = withdrawal_keys(base["withdrawals.json"], plugins)
-    after = withdrawal_keys(candidate["withdrawals.json"], plugins)
-    if any(key not in history for key in before ^ after):
-        raise VerificationError("Maintenance requires an existing version")
-    if base["manifest.json"] != render(
-        history, base["withdrawals.json"], plugins
-    ) or candidate["manifest.json"] != render(
-        history, candidate["withdrawals.json"], plugins
-    ):
-        raise VerificationError("Maintenance manifest differs from protected history")
-    restored = before - after
-    if restored:
-        verify_history(github, plugins, {key: history[key] for key in restored}, [])
-    return True
-
-
-def rebase_pending(current: dict, branch_base: dict, pending: dict) -> list[dict]:
-    if (
-        branch_base["history.json"] != pending["history.json"]
-        or branch_base["plugins.json"] != pending["plugins.json"]
-    ):
-        raise VerificationError("Pending maintenance changed protected files")
-    if pending["manifest.json"] != render(
-        pending["history.json"], pending["withdrawals.json"], pending["plugins.json"]
-    ):
-        raise VerificationError("Pending manifest is not a maintenance projection")
-    withdrawal_keys(pending["withdrawals.json"], pending["plugins.json"])
-    original = mapping(branch_base["withdrawals.json"])
-    proposed = mapping(pending["withdrawals.json"])
-    latest = mapping(current["withdrawals.json"])
-    for key in original.keys() | proposed.keys():
-        if original.get(key) == proposed.get(key):
-            continue
-        if key not in current["history.json"]:
-            raise VerificationError("Pending request no longer identifies a version")
-        if latest.get(key) != original.get(key) and latest.get(key) != proposed.get(
-            key
-        ):
-            raise VerificationError(
-                "Main has conflicting newer maintenance; resolve the pending PR"
-            )
-        if key in proposed:
-            latest[key] = copy.deepcopy(proposed[key])
-        else:
-            latest.pop(key, None)
-    return list(latest.values())
-
-
-def request_change(
-    github: GitHub,
-    current: dict,
-    pending_rows: list[dict],
-    operation: str,
-    repository: str,
-    version: str,
-    reason: str,
-    actor: str,
-    run_url: str,
-) -> dict:
-    if (
-        operation not in {"Withdraw", "Restore"}
-        or repository not in current["plugins.json"]
-        or not re.fullmatch(
-            r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)",
-            version,
-        )
-    ):
-        raise VerificationError(
-            "Choose an allowed plugin and exact four-component version"
-        )
-    if (
-        not reason.strip()
-        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", actor)
-        or not re.fullmatch(
-            r"https://github.com/" + re.escape(REPOSITORY) + r"/actions/runs/[0-9]+",
-            run_url,
-        )
-    ):
-        raise VerificationError(
-            "A reason, requesting actor and owning workflow URL are required"
-        )
-    key = current["plugins.json"][repository]["guid"] + "/" + version
-    if key not in current["history.json"]:
-        raise VerificationError("That version has not been catalogued")
-    rows = mapping(pending_rows)
-    if operation == "Withdraw":
-        rows.setdefault(
-            key,
-            {
-                "guid": key.split("/")[0],
-                "version": version,
-                "reason": reason.strip(),
-                "requestedBy": actor,
-                "requestUrl": run_url,
-            },
-        )
-    else:
-        rows.pop(key, None)
-    candidate = copy.deepcopy(current)
-    candidate["withdrawals.json"] = list(rows.values())
-    candidate["manifest.json"] = render(
-        current["history.json"], candidate["withdrawals.json"], current["plugins.json"]
-    )
-    scoped_validation(github, current, candidate, FILES)
-    return candidate
 
 
 def summary(message: str) -> None:
@@ -168,21 +21,38 @@ def summary(message: str) -> None:
             output.write(message + "\n")
 
 
-def maintain(
-    root: Path, operation: str, repository: str, version: str, reason: str
-) -> None:
-    if (
-        os.environ.get("GITHUB_REF") != "refs/heads/main"
-        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
-        or os.environ.get("GITHUB_REPOSITORY") != REPOSITORY
-    ):
-        raise VerificationError(
-            "Maintenance must be dispatched from main in the catalog repository"
-        )
-    command("git", "fetch", "origin", "main", cwd=root)
-    base_sha = command("git", "rev-parse", "origin/main", cwd=root)
-    current = load(root, base_sha)
-    prs = json.loads(
+class Outcome(Enum):
+    COMPLETED = "completed"
+    PENDING = "pending"
+    CANCELLED = "cancelled"
+    UPDATED = "updated"
+
+
+@dataclass(frozen=True)
+class BranchState:
+    pr: dict | None
+    lease: str
+
+
+@dataclass(frozen=True)
+class Request:
+    operation: str
+    repository: str
+    version: str
+    reason: str
+    actor: str
+    run_url: str
+
+
+@dataclass(frozen=True)
+class Proposal:
+    outcome: Outcome
+    candidate: dict
+    audit: str
+
+
+def maintenance_prs(state: str = "open") -> list[dict]:
+    return json.loads(
         command(
             "gh",
             "pr",
@@ -192,61 +62,46 @@ def maintain(
             "--head",
             BRANCH,
             "--state",
-            "open",
+            state,
             "--json",
-            "number,author,body,url,baseRefName,isCrossRepository",
+            "number,author,body,url,baseRefName,isCrossRepository,state,headRefOid",
         )
     )
+
+
+def owned_pr(pr: dict) -> bool:
+    return (
+        pr.get("author", {}).get("login") == os.environ["PLUGIN_APP_SLUG"] + "[bot]"
+        and pr.get("baseRefName") == "main"
+        and pr.get("isCrossRepository") is False
+    )
+
+
+def inspect_branch(root: Path) -> BranchState:
+    prs = maintenance_prs()
     remote = command("git", "ls-remote", "--heads", "origin", BRANCH, cwd=root)
+    if len(prs) > 1 or prs and not owned_pr(prs[0]):
+        raise VerificationError("Maintenance PR is not owned by this App")
     if (
-        len(prs) > 1
-        or prs
-        and (
-            prs[0]["author"]["login"] != os.environ["PLUGIN_APP_SLUG"] + "[bot]"
-            or prs[0]["baseRefName"] != "main"
-            or prs[0]["isCrossRepository"]
+        remote
+        and not prs
+        and not any(
+            owned_pr(pr)
+            and pr.get("state") in {"MERGED", "CLOSED"}
+            and pr.get("headRefOid") == remote.split()[0]
+            for pr in maintenance_prs("all")
         )
     ):
-        raise VerificationError("Maintenance PR is not owned by this App")
-    if remote and not prs:
-        terminal = json.loads(
-            command(
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                REPOSITORY,
-                "--head",
-                BRANCH,
-                "--state",
-                "all",
-                "--json",
-                "author,baseRefName,isCrossRepository,state,headRefOid",
-            )
-        )
-        if not any(
-            pr["author"]["login"] == os.environ["PLUGIN_APP_SLUG"] + "[bot]"
-            and pr["baseRefName"] == "main"
-            and not pr["isCrossRepository"]
-            and pr["state"] in {"MERGED", "CLOSED"}
-            and pr["headRefOid"] == remote.split()[0]
-            for pr in terminal
-        ):
-            raise VerificationError(
-                "Maintenance branch exists without its owning App PR"
-            )
+        raise VerificationError("Maintenance branch exists without its owning App PR")
     if prs and not remote:
         raise VerificationError("Pending maintenance branch is unavailable")
-    pending_rows = current["withdrawals.json"]
-    pending = current
     lease = ""
-    needs_rebase = False
     if remote:
         command(
             "git",
             "fetch",
             "origin",
-            BRANCH + ":refs/remotes/origin/" + BRANCH,
+            "+" + BRANCH + ":refs/remotes/origin/" + BRANCH,
             cwd=root,
         )
         lease = command("git", "rev-parse", "origin/" + BRANCH, cwd=root)
@@ -254,161 +109,77 @@ def maintain(
             raise VerificationError(
                 "Maintenance branch advanced during ownership checking; retry"
             )
-    if remote and prs:
-        ancestor = command("git", "merge-base", base_sha, lease, cwd=root)
-        needs_rebase = ancestor != base_sha
-        changed = set(
-            command(
-                "git", "diff", "--name-only", ancestor, lease, cwd=root
-            ).splitlines()
-        )
-        if not changed.issubset(FILES):
-            raise VerificationError("Pending PR contains non-maintenance files")
-        pending = load(root, lease)
-        pending_rows = rebase_pending(current, load(root, ancestor), pending)
-    actor = os.environ.get("GITHUB_TRIGGERING_ACTOR") or os.environ["GITHUB_ACTOR"]
-    run_url = (
-        "https://github.com/"
-        + REPOSITORY
-        + "/actions/runs/"
-        + os.environ["GITHUB_RUN_ID"]
+    return BranchState(prs[0] if prs else None, lease)
+
+
+def pending_state(
+    root: Path, base_sha: str, current: dict, branch: BranchState
+) -> tuple[dict, list[dict], bool]:
+    if not branch.pr:
+        return current, current["withdrawals.json"], False
+    ancestor = command("git", "merge-base", base_sha, branch.lease, cwd=root)
+    changed = set(
+        command(
+            "git", "diff", "--name-only", ancestor, branch.lease, cwd=root
+        ).splitlines()
     )
+    if not changed.issubset(FILES):
+        raise VerificationError("Pending PR contains non-maintenance files")
+    pending = load(root, branch.lease)
+    rows = rebase_pending(current, load(root, ancestor), pending)
+    return pending, rows, ancestor != base_sha
+
+
+def plan_request(
+    root: Path, base_sha: str, current: dict, branch: BranchState, request: Request
+) -> Proposal:
+    pending, rows, needs_rebase = pending_state(root, base_sha, current, branch)
     candidate = request_change(
         GitHub(),
         current,
-        pending_rows,
-        operation,
-        repository,
-        version,
-        reason,
-        actor,
-        run_url,
+        rows,
+        request.operation,
+        request.repository,
+        request.version,
+        request.reason,
+        request.actor,
+        request.run_url,
     )
     audit = (
-        "\n\n"
-        + operation
-        + " "
-        + repository
-        + " "
-        + version
-        + " by @"
-        + actor
-        + "\n\nReason: "
-        + json.dumps(reason.strip())
-        + "\n\nRequest: "
-        + run_url
+        f"\n\n{request.operation} {request.repository} {request.version} by @{request.actor}"
+        f"\n\nReason: {json.dumps(request.reason.strip())}\n\nRequest: {request.run_url}"
     )
     if candidate == pending and not needs_rebase and candidate != current:
-        with tempfile.TemporaryDirectory(
-            prefix="catalog-maintenance-body-"
-        ) as directory:
-            body_file = Path(directory) / "body.md"
-            body_file.write_text(prs[0]["body"] + audit)
-            command(
-                "gh",
-                "pr",
-                "edit",
-                str(prs[0]["number"]),
-                "--repo",
-                REPOSITORY,
-                "--body-file",
-                str(body_file),
-            )
-        command(
-            "gh",
-            "pr",
-            "merge",
-            str(prs[0]["number"]),
-            "--repo",
-            REPOSITORY,
-            "--auto",
-            "--squash",
-        )
-        summary(
-            "No change: the requested state is already completed or pending."
-            + (" PR: " + prs[0]["url"] if prs else "")
-        )
-        return
-    if candidate == current and not prs:
-        summary("No change: the requested state is already completed.")
-        return
-    # Stop auto-merge before refreshing either branch or audit trail. A failed
-    # refresh stays disabled; the next explicit request can safely resume it.
-    if prs:
-        command(
-            "gh",
-            "pr",
-            "merge",
-            str(prs[0]["number"]),
-            "--repo",
-            REPOSITORY,
-            "--disable-auto",
-        )
-    if candidate == current and prs:
-        with tempfile.TemporaryDirectory(
-            prefix="catalog-maintenance-body-"
-        ) as directory:
-            body_file = Path(directory) / "body.md"
-            body_file.write_text(prs[0]["body"] + audit)
-            command(
-                "gh",
-                "pr",
-                "edit",
-                str(prs[0]["number"]),
-                "--repo",
-                REPOSITORY,
-                "--body-file",
-                str(body_file),
-            )
-        command("gh", "pr", "close", str(prs[0]["number"]), "--repo", REPOSITORY)
-        summary("Pending requests cancel out; no main changes. PR: " + prs[0]["url"])
-        return
-    command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
-    for name in FILES:
-        (root / name).write_text(json.dumps(candidate[name], indent=4) + "\n")
-    command("git", "config", "user.name", "plugin-catalog[bot]", cwd=root)
-    command(
-        "git",
-        "config",
-        "user.email",
-        "plugin-catalog[bot]@users.noreply.github.com",
-        cwd=root,
-    )
-    command("git", "add", *sorted(FILES), cwd=root)
-    command(
-        "git", "commit", "-m", operation + " " + repository + " " + version, cwd=root
-    )
-    if not set(
-        command("git", "diff", "--name-only", base_sha, "HEAD", cwd=root).splitlines()
-    ).issubset(FILES):
-        raise VerificationError("Generated maintenance contains protected files")
-    command("git", "fetch", "origin", "main", cwd=root)
-    if command("git", "rev-parse", "origin/main", cwd=root) != base_sha:
-        raise VerificationError(
-            "Main advanced during maintenance; retry to refresh the proposal"
-        )
-    command(
-        "git",
-        "push",
-        "--force-with-lease=refs/heads/" + BRANCH + ":" + lease,
-        "origin",
-        "HEAD:refs/heads/" + BRANCH,
-        cwd=root,
-    )
+        outcome = Outcome.PENDING
+    elif candidate == current:
+        outcome = Outcome.CANCELLED if branch.pr else Outcome.COMPLETED
+    else:
+        outcome = Outcome.UPDATED
+    return Proposal(outcome, candidate, audit)
+
+
+def merge_request(pr: dict, option: str) -> None:
+    args = ["gh", "pr", "merge", str(pr["number"]), "--repo", REPOSITORY, option]
+    if option == "--auto":
+        args.append("--squash")
+    command(*args)
+
+
+def update_body(pr: dict | None, audit: str) -> dict:
     body = (
-        prs[0]["body"]
-        if prs
+        pr["body"]
+        if pr
         else "Explicit version maintenance. Only exclusions and the generated manifest may change."
     ) + audit
     with tempfile.TemporaryDirectory(prefix="catalog-maintenance-body-") as directory:
         body_file = Path(directory) / "body.md"
         body_file.write_text(body)
-        if prs:
+        if pr:
             command(
                 "gh",
                 "pr",
                 "edit",
-                str(prs[0]["number"]),
+                str(pr["number"]),
                 "--repo",
                 REPOSITORY,
                 "--body-file",
@@ -430,37 +201,115 @@ def maintain(
                 "--body-file",
                 str(body_file),
             )
-            prs = json.loads(
-                command(
-                    "gh",
-                    "pr",
-                    "list",
-                    "--repo",
-                    REPOSITORY,
-                    "--head",
-                    BRANCH,
-                    "--state",
-                    "open",
-                    "--json",
-                    "number,url",
-                )
-            )
-    if len(prs) != 1:
-        raise VerificationError("Expected one maintenance PR")
+    if pr:
+        return pr
+    prs = maintenance_prs()
+    if len(prs) != 1 or not owned_pr(prs[0]):
+        raise VerificationError("Expected one App-owned maintenance PR")
+    return prs[0]
+
+
+def write_proposal(
+    root: Path, base_sha: str, branch: BranchState, request: Request, candidate: dict
+) -> None:
+    command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
+    for name in FILES:
+        (root / name).write_text(json.dumps(candidate[name], indent=4) + "\n")
+    command("git", "config", "user.name", "plugin-catalog[bot]", cwd=root)
     command(
-        "gh",
-        "pr",
-        "merge",
-        str(prs[0]["number"]),
-        "--repo",
-        REPOSITORY,
-        "--auto",
-        "--squash",
+        "git",
+        "config",
+        "user.email",
+        "plugin-catalog[bot]@users.noreply.github.com",
+        cwd=root,
     )
+    command("git", "add", *sorted(FILES), cwd=root)
+    command(
+        "git",
+        "commit",
+        "-m",
+        request.operation + " " + request.repository + " " + request.version,
+        cwd=root,
+    )
+    changed = set(
+        command("git", "diff", "--name-only", base_sha, "HEAD", cwd=root).splitlines()
+    )
+    if not changed.issubset(FILES):
+        raise VerificationError("Generated maintenance contains protected files")
+    command("git", "fetch", "origin", "main", cwd=root)
+    if command("git", "rev-parse", "origin/main", cwd=root) != base_sha:
+        raise VerificationError(
+            "Main advanced during maintenance; retry to refresh the proposal"
+        )
+    command(
+        "git",
+        "push",
+        "--force-with-lease=refs/heads/" + BRANCH + ":" + branch.lease,
+        "origin",
+        "HEAD:refs/heads/" + BRANCH,
+        cwd=root,
+    )
+
+
+def publish_proposal(
+    root: Path, base_sha: str, branch: BranchState, request: Request, proposal: Proposal
+) -> None:
+    if proposal.outcome == Outcome.COMPLETED:
+        summary("No change: the requested state is already completed.")
+        return
+    if proposal.outcome == Outcome.PENDING:
+        pr = update_body(branch.pr, proposal.audit)
+        merge_request(pr, "--auto")
+        summary(
+            "No change: the requested state is already completed or pending. PR: "
+            + pr["url"]
+        )
+        return
+    # Failures after this point leave any pending PR's auto-merge disabled.
+    if branch.pr:
+        merge_request(branch.pr, "--disable-auto")
+    if proposal.outcome == Outcome.CANCELLED:
+        pr = update_body(branch.pr, proposal.audit)
+        command("gh", "pr", "close", str(pr["number"]), "--repo", REPOSITORY)
+        summary("Pending requests cancel out; no main changes. PR: " + pr["url"])
+        return
+    write_proposal(root, base_sha, branch, request, proposal.candidate)
+    pr = update_body(branch.pr, proposal.audit)
+    merge_request(pr, "--auto")
     summary(
         "Maintenance proposed; auto-merge waits for catalog-validate and an up-to-date branch. PR: "
-        + prs[0]["url"]
+        + pr["url"]
     )
+
+
+def maintain(
+    root: Path, operation: str, repository: str, version: str, reason: str
+) -> None:
+    if (
+        os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or os.environ.get("GITHUB_REPOSITORY") != REPOSITORY
+    ):
+        raise VerificationError(
+            "Maintenance must be dispatched from main in the catalog repository"
+        )
+    command("git", "fetch", "origin", "main", cwd=root)
+    base_sha = command("git", "rev-parse", "origin/main", cwd=root)
+    current = load(root, base_sha)
+    branch = inspect_branch(root)
+    request = Request(
+        operation,
+        repository,
+        version,
+        reason,
+        os.environ.get("GITHUB_TRIGGERING_ACTOR") or os.environ["GITHUB_ACTOR"],
+        "https://github.com/"
+        + REPOSITORY
+        + "/actions/runs/"
+        + os.environ["GITHUB_RUN_ID"],
+    )
+    proposal = plan_request(root, base_sha, current, branch, request)
+    publish_proposal(root, base_sha, branch, request, proposal)
 
 
 if __name__ == "__main__":
