@@ -1,114 +1,179 @@
-# Shared Jellyfin catalog
+# Operate the shared Jellyfin catalog
 
-This repository maintains the shared plugin catalog at:
-
-```text
-https://raw.githubusercontent.com/rakuzen25/jellyfin-plugin-manifest/main/manifest.json
-```
-
-Each plugin keeps its source, GUID, versions and downloadable releases. `plugins.json` defines the allowlist and verification requirements. New plugins start with their latest stable release only. Missing evidence is a failed reconciliation with a deduplicated issue, never an implicit exemption.
+Use this guide to configure publication, manage versions, and recover failed updates. For the public repository URL and Jellyfin setup, see the [README](README.md).
 
 ## Work on the catalog
 
-Clone this repository and select the Python version in `.python-version`:
+Clone the repository, then select the Python version in [`.python-version`](.python-version) before running scripts or tests:
 
 ```sh
 git clone https://github.com/rakuzen25/jellyfin-plugin-manifest.git
 cd jellyfin-plugin-manifest
-python3 -m unittest discover -s tests -p 'Catalog*.py'
 ```
 
-In this checkout, `scripts/catalog.py` owns merge validation, `scripts/catalog_core.py` owns release verification and reconciliation, and `scripts/catalog_maintenance_policy.py` owns maintenance-delta validation. The executable sync and maintenance scripts import those shared modules without importing one another.
+Submit code, policy, and tooling changes through reviewed pull requests. Run the [local checks](#test-the-catalog) before submitting.
 
-Submit code, policy and tooling changes through reviewed pull requests. GitHub CLI is required by the automation and provided on hosted runners; live local verification also requires an authenticated source-read token.
+Shared modules keep validation independent of publication:
+
+| Module | Responsibility |
+| --- | --- |
+| `scripts/catalog.py` | Validate and merge catalog entries. |
+| `scripts/catalog_core.py` | Verify releases and reconcile history. |
+| `scripts/catalog_maintenance_policy.py` | Validate maintenance changes against protected history. |
+
+The sync and maintenance entry points import these modules without importing one another.
 
 ## Create one shared GitHub App
 
-1. Open your GitHub **Settings → Developer settings → GitHub Apps → New GitHub App**. Choose a globally available name such as `rakuzen25-plugin-publisher`. Set the homepage to the catalog repository. Disable webhooks; no webhook server, callback URL or user authorization is needed. Limit installation to your account.
-2. Grant repository **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write**, **Actions: Read-only**, and **Attestations: Read-only**. Metadata read is automatic. Grant no organization, administration or workflow-writing permissions.
-3. Install the App using **Only select repositories**: `jellyfin-plugin-lyricbridge` and `jellyfin-plugin-manifest`.
-4. Generate and securely store a private key. In this repository, add Actions variable `PLUGIN_APP_CLIENT_ID` containing the App's Client ID, and Actions secret `PLUGIN_APP_PRIVATE_KEY` containing the complete PEM private key. Never commit the PEM or paste it into an issue/log.
+Create an App for the catalog and its allowlisted plugin repositories:
 
-Tokens are generated just before use and revoked at job completion. Catalog updates request write access only on this repository. Read-only source inspection uses a separate token scoped to the allowlisted plugin repositories. Catalog PR checks use the read-only workflow token and never receive the App private key. The private key can mint permissions on all installed repositories: keep installation narrow and rotate the key when needed.
+1. Open **Settings → Developer settings → GitHub Apps → New GitHub App**. Choose an available name, such as `rakuzen25-plugin-publisher`.
+2. Set the homepage to this repository, disable webhooks, and limit installation to your account. No callback URL or user authorization is needed.
+3. Grant repository **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write**, **Actions: Read-only**, and **Attestations: Read-only**. Metadata read is automatic; grant no organization, administration, or workflow-writing permissions.
+4. Install the App using **Only select repositories**: `jellyfin-plugin-lyricbridge` and `jellyfin-plugin-manifest`.
+5. Generate and securely store a private key. Add Actions variable `PLUGIN_APP_CLIENT_ID` with the App's Client ID and secret `PLUGIN_APP_PRIVATE_KEY` with the complete PEM key.
 
-The catalog consumes release assets and attestations. Its App needs Attestations read access; release creation and attestation signing belong to the plugin publisher.
+Never commit the key or paste it into logs or issues. It can mint permissions on all installed repositories; keep installation narrow and rotate it when needed.
+
+Workflows generate tokens before use and revoke them at job completion. Catalog updates request write access only on this repository. Source inspection uses a separate read-only token scoped to allowlisted plugins. Pull request checks use the read-only workflow token without the App key.
+
+Plugin publishers create releases and sign attestations; the catalog reads them.
 
 ## Protect the catalog and enable automatic additions
 
-Configure the catalog repository:
+Configure these settings before enabling publication:
 
-1. Run **Validate catalog** and confirm the job named `catalog-validate` exists and passes.
+1. Run **Validate catalog** and confirm that `catalog-validate` passes.
 2. Under **Settings → General → Pull Requests**, enable **Allow auto-merge** and squash merging.
-3. Under **Settings → Rules → Rulesets**, create an active branch rule for `main`: require a pull request, require the `catalog-validate` status check (GitHub Actions as its provider), and require branches to be up to date before merging. Require no approving reviews for automated additions. Block force pushes and branch deletion. Add no App bypass.
-4. Confirm **Actions → General** permits the reviewed SHA-pinned GitHub actions used here. Preserve read-only default workflow permissions; individual jobs request only what they need.
-5. Run **Reconcile plugin catalog** manually. It verifies releases and is a no-op when the catalog is current. A new stable release creates an App-owned PR, enables squash auto-merge and waits for required validation. Inspect the resulting PR and its required-check/merge history.
+3. Under **Settings → Rules → Rulesets**, protect `main`: require a pull request, `catalog-validate` from GitHub Actions, and an up-to-date branch. Require no approving reviews for automated additions and owner-requested maintenance. Block force pushes and branch deletion; add no App bypass.
+4. Under **Actions → General**, permit the reviewed SHA-pinned actions used here. Keep default workflow permissions read-only.
+5. Run **Reconcile plugin catalog** manually. A current catalog produces no change; a qualifying release creates an App-owned pull request requesting squash auto-merge.
 
-Automated PRs change only `history.json` and generated `manifest.json`. Policy, tooling and withdrawal edits are ordinary manually reviewed PRs; the updater never enables auto-merge for them. The updater owns one App-authored branch, serializes reconciliation, and uses a lease when refreshing that branch. Duplicate notifications are harmless. No plugin build or browser suite runs in the catalog repository.
+The automated paths use separate branches and the same required check:
 
-Publication loads its inputs from a captured protected main commit and freshly verifies the candidate against that snapshot. A surviving `automation/catalog-update` branch can be reused when its exact head SHA belongs to a merged or closed PR owned by this App, targeting main in this repository. Branch deletion after merging is optional. Open publication PRs must meet the same ownership and base checks; ambiguous PRs are rejected.
+| Path | Branch | Files changed |
+| --- | --- | --- |
+| Verified release additions | `automation/catalog-update` | `history.json`, generated `manifest.json` |
+| Owner-requested withdrawal or restoration | `automation/catalog-maintenance` | `withdrawals.json`, generated `manifest.json` |
 
-If a branch push succeeds but PR creation fails, retry **Reconcile plugin catalog**. The updater can open the missing PR without another push only when the branch includes the captured main commit, its complete diff changes only regular non-executable `history.json` and `manifest.json` files, and both JSON documents exactly match the freshly verified candidate. Unmatched or stale orphan branches are neither overwritten nor adopted. Inspect their diff and resolve or remove the branch as the owner before retrying; do not delete a branch belonging to a pending owner decision.
+Both paths request auto-merge after checking the proposal. Ordinary code, policy, tooling, and manual withdrawal edits require reviewed pull requests; the updater doesn't enable auto-merge for them.
 
-Publication checks main again before pushing or recovering a PR. Main advancement requires a fresh retry. Existing-branch updates use the exact observed SHA as the push lease; new branches require that no remote branch exists. Auto-merge is disabled before refreshing an open proposal and restored only after the updated PR is checked. A failed refresh can leave auto-merge disabled; retrying an unchanged verified proposal resumes it without another commit or push. Local publication requires a clean tracked working tree.
+Both workflows share the non-cancelling `catalog-update` queue with `queue: max`. Execution order determines pending maintenance state; retry requests that exceed queue capacity. Duplicate release notifications are harmless.
 
-## Publication, evidence and recovery
+## Verify releases before publication
 
-The catalog consumes published stable releases from allowlisted repositories using GitHub's release/tag APIs. Publishers may send a `plugin-published` repository dispatch as a reconciliation hint. Daily reconciliation and manual refresh also discover releases; the dispatch payload is never trusted as authority.
+Configure allowed repositories, immutable plugin GUIDs, asset prefixes, and evidence requirements in [`plugins.json`](plugins.json). Initial onboarding imports only the latest stable release. Later reconciliation retains verified versions and discovers missed releases; drafts and prereleases are excluded.
 
-Release verification requires the plugin, web and source ZIPs, `manifest.json`, and `SHA256SUMS`, using the asset prefix configured in `plugins.json`. A durable `validation.json` receipt contains hashes of those five assets; it is excluded from its own hash inventory and `SHA256SUMS`. Verification uses `gh attestation verify`, the approved signer workflow, a main-branch source ref and hosted-runner policy, followed by authenticated successful attachment/aggregate jobs and exact public-asset hashes. A generic green workflow or unsigned uploaded JSON is insufficient.
+Scheduled reconciliation runs at **06:23 UTC** daily. Publishers can send a `plugin-published` repository dispatch; its payload is only a hint. Manual refresh uses the same authenticated release and tag APIs.
 
-Older releases can bootstrap through a nonexpired authenticated `lyricbridge-validation-receipt` CI artifact. The small original ZIP is retained in catalog history, bound to the artifact ID, GitHub-provided SHA-256 digest and validation run. Later checks verify this archive against public artifact metadata instead of downloading an expired archive. If lookup is exhausted, evidence has expired or no full release receipt exists, wait for the next qualifying release. Existing public releases are never modified to add evidence. If GitHub subsequently deletes the bootstrap artifact metadata or originating run, historical CI-only evidence becomes unavailable; the served catalog remains unchanged and an issue requests owner attention.
+Each release must provide the plugin, web, and source ZIPs, `manifest.json`, and `SHA256SUMS`. A durable `validation.json` receipt must hash those five assets; exclude it from its own inventory and from `SHA256SUMS`.
 
-Daily reconciliation runs at **06:23 UTC** and the Actions UI also offers manual refresh. It discovers missed publications after the initial latest-only onboarding and retains all subsequently verified stable versions. Drafts and prereleases are excluded. Downloads, source archives, license/source inventories and fresh advisory assessment remain the plugin release workflow's responsibility; catalog verification does not rebuild or bypass them.
+Verification checks:
 
-Missing assets, API/rate-limit errors, moved tags or checksum conflicts fail before a candidate is published. Existing manifest entries remain intact. Automation opens or updates a deduplicated integrity issue and closes its issues after full recovery. Retry **Reconcile plugin catalog** without arguments after resolving the reported problem.
+- `gh attestation verify` against the approved signer workflow, a `main` source ref, and hosted runners.
+- Authenticated successful attachment and aggregate validation jobs.
+- Exact public asset hashes, release identity, plugin GUID, and version.
+
+Missing assets, API failures, moved tags, and changed checksums stop publication and preserve the served manifest. Reconciliation opens or updates a deduplicated integrity issue and closes its issues after full recovery.
+
+Older releases without a public receipt can bootstrap through a nonexpired authenticated `lyricbridge-validation-receipt` artifact. History retains its original ZIP, bound to the artifact ID, authenticated SHA-256 digest, and validation run. Later checks use the saved archive and GitHub metadata, so archive expiry alone doesn't invalidate it.
+
+Deleted artifact metadata or originating runs make that evidence unavailable. If initial evidence has expired, lookup is exhausted, or no full receipt exists, wait for a qualifying release. Don't modify existing public releases to add evidence.
+
+Plugin publishers remain responsible for builds, downloads, source and license inventories, and fresh advisory assessment. Catalog verification doesn't rebuild plugins or run their browser suites.
 
 ## Withdraw or restore a version from Actions
 
-In **rakuzen25/jellyfin-plugin-manifest → Actions → Withdraw or restore version → Run workflow**, choose branch **main** and enter:
+To propose an owner decision, open **Actions → Withdraw or restore version → Run workflow** in this repository:
 
-- **Operation:** `Withdraw` or `Restore`.
-- **Repository:** the allowlisted plugin repository, currently `rakuzen25/jellyfin-plugin-lyricbridge`.
-- **Version:** its exact catalog version, for example `0.1.3.0` (four numeric components, with no leading zeros except a component equal to `0`).
-- **Reason:** the owner decision recorded with your actor name and workflow-run link.
+1. Choose branch **main**.
+2. Choose **Operation**: `Withdraw` or `Restore`.
+3. Enter the allowlisted **Repository**, currently `rakuzen25/jellyfin-plugin-lyricbridge`.
+4. Enter the exact four-component **Version**, such as `0.1.3.0`. Leading zeros are invalid except for a component equal to `0`.
+5. Enter a **Reason**, then run the workflow. The request records your actor name and workflow-run link.
 
-Running the workflow authorizes the proposal. The shared App opens or updates its dedicated `automation/catalog-maintenance` PR and enables squash auto-merge behind the existing `catalog-validate` and up-to-date requirements. The Actions summary links to the PR; auto-merge is requested, not reported as already completed. No extra credentials, environment approvals, protection bypass or direct main push is used.
+Dispatch authorizes the proposal. The Actions summary links to the App-owned maintenance pull request. Auto-merge waits for `catalog-validate` and an up-to-date branch; no protection bypass or direct `main` push is used.
 
-Withdrawal changes only `withdrawals.json` and the generated `manifest.json`. History, release files and already installed plugins are retained. Reconciliation cannot re-add an excluded version. Restoration freshly verifies the original stable release, source, receipt and hashes before removing its exclusion; failures leave pending decisions intact. Cancelling an unmerged withdrawal restores the existing main state without introducing a new version and therefore needs no remote verification. Repeating a completed operation is a successful no-op.
+Withdrawal retains history, release files, and installed plugins. Reconciliation cannot re-add an excluded version. Restoration verifies the original stable release, source, receipt, and hashes before removing its exclusion. Failed verification preserves pending decisions.
 
-Requests share a non-cancelling `catalog-update` queue with release additions. `queue: max` preserves up to 100 pending runs; requests beyond GitHub's queue capacity must be retried. Execution order follows the runner queue, so the latest successfully processed request determines a version's pending state. Several unmerged requests accumulate on the maintenance branch. A later opposite request can cancel an earlier pending change; if nothing remains, the App closes that PR without committing to main. Completed App-owned branches can be reused safely even when automatic branch deletion is disabled.
+Unmerged requests accumulate on the maintenance branch. An opposite request can cancel a pending change; if nothing remains, the App closes the pull request. Cancelling an unmerged withdrawal needs no remote verification because it restores the existing `main` state. Repeating a completed operation succeeds without changes.
 
-When main advances, the updater reapplies only pending maintenance decisions to the new base. A conflicting newer main decision fails clearly rather than being overwritten. If the summary says main advanced during preparation, rerun the request. If it reports a conflicting owner decision or non-App branch, inspect and resolve the existing PR first. A failed refresh can leave auto-merge disabled; an unchanged explicit retry safely resumes it after validation.
+Required maintenance validation compares against the authenticated pull request base or preceding `main` commit. It checks the exact manifest projection while preserving policy, history, and unrelated records. Only restored versions need remote checks; unrelated integrity failures or failure to mint the optional source token don't block withdrawal. A separate non-blocking audit reports remaining problems, and scheduled reconciliation reports persistent issues.
 
-`catalog-validate` recognizes a narrow maintenance-only diff against the authenticated PR base or preceding main commit. It proves the exact exclusion/removal projection while keeping policy, history and unrelated records unchanged. Only versions reintroduced by restoration require remote checks. Unrelated network/integrity failures cannot prevent a safe withdrawal. Failure to mint the optional read-only source token also does not block a removal; a restoration still fails unless its required public evidence can be verified. A separate non-blocking audit reports remaining catalog problems in Actions; full scheduled reconciliation continues to report persistent problems as issues. Ordinary addition/policy/tooling PRs retain full verification.
+### Edit exclusions offline
 
-Required `catalog-validate` protection applies to maintenance PRs. When configuring or changing the maintenance workflow, confirm that a main-branch dispatch creates an App-owned PR, failed target verification blocks restoration, and auto-merge waits for the required check.
+For a manually reviewed change, edit `withdrawals.json` with an allowed GUID, canonical version, and nonempty reason. Then regenerate the manifest:
 
-For manually reviewed offline edits, `python3 scripts/catalog_sync.py withdraw` regenerates the manifest after editing exclusions. The same canonical version rule applies to `withdrawals.json`: `00.1.3.0` is rejected rather than treated as `0.1.3.0`. Invalid versions leave the existing manifest untouched. Keep history and submit both exclusions and manifest together.
+```sh
+python3 scripts/catalog_sync.py withdraw
+```
 
-Older Actionlint versions may predate the `concurrency.queue` key. If your installed version reports that unsupported key, ignore only that diagnostic; a focused policy test checks that both state-changing workflows use the same `catalog-update`, `queue: max`, `cancel-in-progress: false` settings. Keep all other Actionlint diagnostics enabled.
+Invalid versions, such as `00.1.3.0`, leave the manifest untouched. Keep history intact and submit both `withdrawals.json` and `manifest.json` together.
+
+## Recover failed updates
+
+Use the workflow log and integrity issue to choose a recovery action:
+
+| Symptom | Action |
+| --- | --- |
+| Missing assets, unavailable evidence, API failure, or changed release | Resolve the cause, then rerun **Reconcile plugin catalog**. Preserve existing releases and history. |
+| `main` advances during preparation | Rerun reconciliation or the maintenance request against the new base. |
+| Push succeeds but publication pull request creation fails | Rerun reconciliation. Recovery requires the branch to contain the captured `main` commit, change only regular non-executable catalog files, and exactly match the freshly verified candidate. |
+| Unmatched or stale publication branch | Inspect its diff and resolve or remove it as owner before retrying. Don't delete a branch containing a pending owner decision. |
+| Conflicting newer maintenance decision or non-App branch | Resolve the existing pull request before retrying; automation won't overwrite the conflict. |
+| Failed refresh leaves auto-merge disabled | Explicitly retry the unchanged proposal to resume auto-merge after validation. |
+| Actionlint rejects only `concurrency.queue` | Ignore only that unsupported-key diagnostic on older versions. Keep other diagnostics enabled; the policy test checks both workflows' queue settings. |
+
+Publication verifies against a captured protected `main` commit and checks `main` again before pushing or recovering a pull request. Existing branches use the observed SHA as the push lease; new branches require an absent remote branch. Local publication requires a clean tracked working tree.
+
+Open publication pull requests must belong to this App and target `main` in this repository. Automation rejects ambiguous ownership. Completed branches can be reused when their exact head belongs to a merged or closed App-owned pull request; branch deletion is optional.
+
+Maintenance reapplies pending decisions when `main` advances and rejects conflicting newer decisions. Both paths disable auto-merge before refreshing an open proposal and request it again after checking the updated proposal.
 
 ## Onboard another plugin
 
-Add its repository, immutable GUID, asset prefix, receipt schema/group requirements and approved workflow paths to `plugins.json` in a manually reviewed PR. Install the shared App on that plugin, configure its credentials, extend the updater’s read-only source token repository list, adopt the same durable-receipt/attestation release contract and notification workflow, and verify a stable release. The initial importer chooses that plugin's latest stable release only. Other naming conventions or receipt policies require a reviewed adapter, not an unvalidated generic fallback.
+Before onboarding, prepare a stable release with the required evidence:
 
-## Local evidence and hosted acceptance
+1. Add its repository, immutable GUID, asset prefix, receipt schema, required groups, and approved workflow paths to `plugins.json` in a reviewed pull request.
+2. Install the shared App on the plugin repository and configure its credentials.
+3. Extend the read-only source token repository lists in both [sync](.github/workflows/sync.yml) and [maintenance](.github/workflows/maintenance.yml) workflows.
+4. Adopt the durable receipt, attestation, and notification contract, then verify a stable release. Initial import selects only the latest stable release.
 
-From this catalog checkout, select the Python version in `.python-version`, then run the same automated suite used by `catalog-validate`:
+Other naming conventions or receipt policies require a reviewed adapter, without an unvalidated fallback.
+
+## Test the catalog
+
+In this checkout, select the Python version in `.python-version`, then run the suite used by `catalog-validate`:
 
 ```sh
 python3 -m unittest discover -s tests -p 'Catalog*.py'
 ```
 
-The suite covers catalog merge/validation, release policy, maintenance, and publication against real temporary Git repositories and a bare remote. GitHub responses and release assets are deterministic fixtures. The temporary repositories are removed afterward; no credentials or remote GitHub writes are required.
+The suite uses deterministic GitHub fixtures and disposable local Git repositories to test merging, release policy, maintenance, and publication. It needs Git but no GitHub credentials or remote writes, and removes temporary repositories afterward. Confirm that it exits successfully with `OK`.
 
-Optional live checks, run separately:
+For live validation, install GitHub CLI (`gh`) and set `SOURCE_GH_TOKEN` or `GH_TOKEN` with source read access. This check verifies the current catalog without publishing:
 
 ```sh
 python3 scripts/catalog_sync.py validate
+```
+
+For discovery and installation checks, provide Docker and access to public plugin archives. With a nonempty manifest, run:
+
+```sh
 python3 tests/CatalogDiscovery.py manifest.json
 ```
 
-Live validation requires `gh` and a `GH_TOKEN` or `SOURCE_GH_TOKEN` with source read access. Discovery requires Docker and access to the public plugin archives; it starts and removes a disposable Jellyfin server and does not run in the automated suite. Local fixtures do not establish real GitHub authentication, Sigstore verification, release events, branch protection or auto-merge behavior.
+Discovery starts and removes a disposable Jellyfin server; it doesn't run in the automated suite. Success prints `PASS: shared manifest discovered and exact public plugins installed/active in disposable Jellyfin 12.2`.
 
-When configuring or changing automation, verify that a published stable release opens an App-owned catalog PR; that PR runs CI; failed catalog validation blocks merging; successful validation auto-merges; retries create no duplicates; and daily reconciliation discovers a missed release. Download the served public manifest and plugin asset without authentication, then add the repository URL to a disposable Jellyfin server and confirm discovery/installability.
+### Check hosted acceptance
+
+When configuring or changing automation, confirm these behaviors on GitHub:
+
+- A stable release opens an App-owned pull request, starts checks, and merges only after successful required validation.
+- Retries create no duplicates, and reconciliation discovers a missed notification.
+- A maintenance dispatch from `main` creates an App-owned proposal; failed target verification blocks restoration.
+- The served manifest and plugin archive download without authentication, and a disposable Jellyfin server discovers and installs the plugin.
+
+Local fixtures don't establish GitHub authentication, Sigstore verification, release events, branch protection, or auto-merge behavior.
+
+For ongoing changes, use [withdrawal and restoration](#withdraw-or-restore-a-version-from-actions), [plugin onboarding](#onboard-another-plugin), or [recovery actions](#recover-failed-updates).
