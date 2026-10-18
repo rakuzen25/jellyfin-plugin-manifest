@@ -56,6 +56,9 @@ class PublicationGitTests(unittest.TestCase):
         self.commands = patch.object(sync, "command", side_effect=self.command)
         self.commands.start()
         self.addCleanup(self.commands.stop)
+        sleeps = patch.object(sync.time, "sleep")
+        sleeps.start()
+        self.addCleanup(sleeps.stop)
 
     def git(self, *args):
         return subprocess.run(
@@ -293,6 +296,29 @@ class PublicationGitTests(unittest.TestCase):
                 self.assertEqual(self.head(), head)
                 self.assertEqual(self.pushes(), [])
                 self.assertFalse(any("--auto" in args for args in self.calls))
+
+    def test_publication_waits_for_pr_head_after_push(self):
+        self.publish()
+        previous = self.head()
+        self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
+        reads = 0
+        original = sync.publication_prs
+
+        def delayed_prs(state="open"):
+            nonlocal reads
+            prs = original(state)
+            if self.head() != previous:
+                reads += 1
+                if reads <= 2:
+                    return [dict(pr, headRefOid=previous) for pr in prs]
+            return prs
+
+        with patch.object(sync, "publication_prs", side_effect=delayed_prs):
+            self.publish()
+        self.assertEqual(reads, 3)
+        self.assertIn("--auto", self.calls[-1])
+        self.assertEqual(self.calls[-1][-1], self.head())
+        self.assertEqual(len(self.pushes()), 2)
 
     def test_created_pr_is_rechecked_before_auto_merge(self):
         for overrides in (

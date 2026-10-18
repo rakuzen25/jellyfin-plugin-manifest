@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from catalog_core import (
@@ -261,8 +262,14 @@ def publish_pr(root: Path, base_sha: str, before: dict, candidate: dict) -> None
             "--body",
             "Verified public stable releases. No policy or withdrawal changes.",
         )
-    pr = open_publication_pr()
-    if not pr or pr.get("headRefOid") != head:
+    # GitHub's PR read model can briefly lag behind a successful branch push.
+    for attempt in range(4):
+        pr = open_publication_pr()
+        if pr and pr.get("headRefOid") == head:
+            break
+        if attempt < 3:
+            time.sleep(1)
+    else:
         raise VerificationError("Expected one App publication PR at the verified head")
     merge_publication(pr, "--auto")
 
