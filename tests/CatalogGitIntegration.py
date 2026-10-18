@@ -49,7 +49,7 @@ class PublicationGitTests(unittest.TestCase):
         self.created_override = {}
         self.before_command = None
         self.environment = patch.dict(
-            sync.os.environ, {"PLUGIN_APP_SLUG": "catalog-app"}
+            sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
@@ -82,7 +82,7 @@ class PublicationGitTests(unittest.TestCase):
     def pr(self, head=None, **overrides):
         result = {
             "number": 7,
-            "author": {"login": "catalog-app[bot]"},
+            "author": {"login": "app/test-catalog-app", "is_bot": True},
             "baseRefName": "main",
             "isCrossRepository": False,
             "state": "OPEN",
@@ -101,6 +101,8 @@ class PublicationGitTests(unittest.TestCase):
                 for pr in self.prs:
                     pr["headRefOid"] = self.head()
             return result
+        if args[:3] == ("gh", "api", "users/test-catalog-app[bot]"):
+            return "123456"
         if args[:3] == ("gh", "pr", "list"):
             rows = self.prs + self.terminal if "all" in args else self.prs
             return json.dumps(rows)
@@ -165,6 +167,11 @@ class PublicationGitTests(unittest.TestCase):
     def test_initial_publication_is_a_protected_pr_with_an_empty_lease(self):
         base, before, candidate = self.snapshot()
         self.publish((base, before, candidate))
+        self.assertEqual(
+            self.git("show", "-s", "--format=%an <%ae>%n%cn <%ce>", self.head()),
+            "test-catalog-app[bot] <123456+test-catalog-app[bot]@users.noreply.github.com>\n"
+            "test-catalog-app[bot] <123456+test-catalog-app[bot]@users.noreply.github.com>",
+        )
         self.assertEqual(self.git("rev-parse", "origin/main"), base)
         self.assertEqual(
             policy.load(self.root, self.head())["history.json"],

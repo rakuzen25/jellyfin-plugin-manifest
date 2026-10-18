@@ -12,6 +12,8 @@ from catalog_core import (
     REPOSITORY,
     GitHub,
     VerificationError,
+    app_author,
+    configure_app_git_author,
     command,
     reconcile,
     render,
@@ -41,11 +43,10 @@ def problem_issue(message: str | None) -> None:
             "100",
         )
     )
-    bot = os.environ["PLUGIN_APP_SLUG"] + "[bot]"
     matches = [
         issue
         for issue in issues
-        if issue["body"].startswith(prefix) and issue["author"]["login"] == bot
+        if issue["body"].startswith(prefix) and app_author(issue["author"])
     ]
     if message:
         body = (
@@ -85,7 +86,7 @@ def problem_issue(message: str | None) -> None:
 
 def owned_pr(pr: dict) -> bool:
     return (
-        pr.get("author", {}).get("login") == os.environ["PLUGIN_APP_SLUG"] + "[bot]"
+        app_author(pr.get("author", {}))
         and pr.get("baseRefName") == "main"
         and pr.get("isCrossRepository") is False
     )
@@ -186,14 +187,7 @@ def write_publication(root: Path, base_sha: str, candidate: dict, lease: str) ->
     command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
     for name in FILES:
         (root / name).write_text(json.dumps(candidate[name], indent=4) + "\n")
-    command("git", "config", "user.name", "plugin-catalog[bot]", cwd=root)
-    command(
-        "git",
-        "config",
-        "user.email",
-        "plugin-catalog[bot]@users.noreply.github.com",
-        cwd=root,
-    )
+    configure_app_git_author(root, command)
     command("git", "add", *FILES, cwd=root)
     command("git", "commit", "-m", "Update verified plugin catalog", cwd=root)
     head = command("git", "rev-parse", "HEAD", cwd=root)

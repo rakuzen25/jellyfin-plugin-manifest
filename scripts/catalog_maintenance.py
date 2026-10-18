@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from catalog_core import REPOSITORY, GitHub, VerificationError, command
+from catalog_core import (
+    REPOSITORY, GitHub, VerificationError, app_author, command, configure_app_git_author,
+)
 from catalog_maintenance_policy import FILES, load, rebase_pending, request_change
 
 BRANCH = "automation/catalog-maintenance"
@@ -71,7 +73,7 @@ def maintenance_prs(state: str = "open") -> list[dict]:
 
 def owned_pr(pr: dict) -> bool:
     return (
-        pr.get("author", {}).get("login") == os.environ["PLUGIN_APP_SLUG"] + "[bot]"
+        app_author(pr.get("author", {}))
         and pr.get("baseRefName") == "main"
         and pr.get("isCrossRepository") is False
     )
@@ -215,14 +217,7 @@ def write_proposal(
     command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
     for name in FILES:
         (root / name).write_text(json.dumps(candidate[name], indent=4) + "\n")
-    command("git", "config", "user.name", "plugin-catalog[bot]", cwd=root)
-    command(
-        "git",
-        "config",
-        "user.email",
-        "plugin-catalog[bot]@users.noreply.github.com",
-        cwd=root,
-    )
+    configure_app_git_author(root, command)
     command("git", "add", *sorted(FILES), cwd=root)
     command(
         "git",

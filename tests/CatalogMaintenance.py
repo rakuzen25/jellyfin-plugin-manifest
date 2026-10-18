@@ -21,8 +21,9 @@ ENV = {
     "GITHUB_EVENT_NAME": "workflow_dispatch",
     "GITHUB_REPOSITORY": core.REPOSITORY,
     "GITHUB_ACTOR": "owner",
+    "GITHUB_TRIGGERING_ACTOR": "owner",
     "GITHUB_RUN_ID": "123",
-    "PLUGIN_APP_SLUG": "catalog-app",
+    "PLUGIN_APP_SLUG": "test-catalog-app",
 }
 
 
@@ -200,7 +201,7 @@ class MaintenanceTests(unittest.TestCase):
                     "number": 7,
                     "url": "https://github.com/" + core.REPOSITORY + "/pull/7",
                     "author": {
-                        "login": "other-app[bot]" if foreign else "catalog-app[bot]"
+                        "login": "other-app[bot]" if foreign else "test-catalog-app[bot]"
                     },
                     "body": "Previous authorized request",
                     "baseRefName": "main",
@@ -217,6 +218,8 @@ class MaintenanceTests(unittest.TestCase):
                 self.audit_bodies.append(
                     Path(args[args.index("--body-file") + 1]).read_text()
                 )
+            if args[:3] == ("gh", "api", "users/test-catalog-app[bot]"):
+                return "123456"
             if args[:3] == ("gh", "pr", "list"):
                 if terminal and "all" in args:
                     return json.dumps(
@@ -225,7 +228,7 @@ class MaintenanceTests(unittest.TestCase):
                                 "author": {
                                     "login": "other-app[bot]"
                                     if foreign
-                                    else "catalog-app[bot]"
+                                    else "test-catalog-app[bot]"
                                 },
                                 "baseRefName": "main",
                                 "isCrossRepository": False,
@@ -240,7 +243,7 @@ class MaintenanceTests(unittest.TestCase):
                         [
                             {
                                 "number": 8,
-                                "author": {"login": "catalog-app[bot]"},
+                                "author": {"login": "app/test-catalog-app", "is_bot": True},
                                 "baseRefName": "main",
                                 "isCrossRepository": False,
                                 "url": "https://github.com/"
@@ -290,6 +293,11 @@ class MaintenanceTests(unittest.TestCase):
         calls, error = self.run_mock()
         self.assertIsNone(error)
         arguments = [call.args for call in calls]
+        self.assertIn(("git", "config", "user.name", "test-catalog-app[bot]"), arguments)
+        self.assertIn(
+            ("git", "config", "user.email", "123456+test-catalog-app[bot]@users.noreply.github.com"),
+            arguments,
+        )
         self.assertTrue(
             any(
                 args[:2] == ("git", "push")

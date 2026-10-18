@@ -448,6 +448,36 @@ class CatalogPublicationTests(unittest.TestCase):
             ):
                 github.bootstrap_receipt(SOURCE, proof)
 
+    @patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"})
+    def test_commit_identity_rejects_missing_bot_user_id(self):
+        for user_id in ("", "null", "0", "someone-else"):
+            with self.subTest(user_id=user_id):
+                with patch.object(core, "command", return_value=user_id) as run, self.assertRaises(core.VerificationError):
+                    core.configure_app_git_author(Path("/tmp"), run)
+                self.assertEqual(run.call_count, 1)
+
+    @patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"})
+    def test_app_author_formats_preserve_ownership_checks(self):
+        for author in (
+            {"login": "app/test-catalog-app", "is_bot": True},
+            {"login": "test-catalog-app[bot]"},
+        ):
+            pr = {"author": author, "baseRefName": "main", "isCrossRepository": False}
+            with self.subTest(author=author):
+                self.assertTrue(sync.owned_pr(pr))
+                self.assertFalse(sync.owned_pr(dict(pr, baseRefName="other")))
+                self.assertFalse(sync.owned_pr(dict(pr, isCrossRepository=True)))
+        for author in (
+            {},
+            {"login": "test-catalog-app"},
+            {"login": "app/test-catalog-app", "is_bot": False},
+            {"login": "app/test-catalog-app"},
+            {"login": "test-catalog-app[bot]", "is_bot": False},
+            {"login": "app/other-app", "is_bot": True},
+        ):
+            with self.subTest(author=author):
+                self.assertFalse(core.app_author(author))
+
     def test_noop_and_foreign_publication_pr_do_not_run_git_commands(
         self,
     ):
@@ -456,7 +486,7 @@ class CatalogPublicationTests(unittest.TestCase):
             sync.publish_pr(root, "a" * 40, {}, {})
             command.assert_not_called()
         with (
-            patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
+            patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}),
             patch.object(
                 sync,
                 "publication_prs",
@@ -485,17 +515,17 @@ class CatalogPublicationTests(unittest.TestCase):
         )
         issue = {
             "number": 1,
-            "author": {"login": "test-app[bot]"},
+            "author": {"login": "app/test-catalog-app", "is_bot": True},
             "body": marker + "\nmissing asset",
         }
         with (
-            patch.dict(os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
+            patch.dict(os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}),
             patch.object(sync, "command", return_value=json.dumps([issue])) as command,
         ):
             sync.problem_issue("missing asset")
             self.assertEqual(command.call_count, 1)
         with (
-            patch.dict(os.environ, {"PLUGIN_APP_SLUG": "test-app"}),
+            patch.dict(os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}),
             patch.object(
                 sync, "command", side_effect=[json.dumps([issue]), ""]
             ) as command,
