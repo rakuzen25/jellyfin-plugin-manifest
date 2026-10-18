@@ -1,6 +1,7 @@
 name: Validate catalog
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   workflow_dispatch:
@@ -19,6 +20,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Check Conventional Commit PR title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^\)]+\))?!?:\ .+ ]]; then
+            echo 'Use a Conventional Commit title, for example: fix(catalog): verify release metadata'
+            exit 1
+          fi
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: .python-version

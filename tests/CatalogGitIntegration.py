@@ -109,6 +109,8 @@ class PublicationGitTests(unittest.TestCase):
         if args[:3] == ("gh", "pr", "list"):
             rows = self.prs + self.terminal if "all" in args else self.prs
             return json.dumps(rows)
+        if args[:3] == ("gh", "pr", "edit"):
+            return ""
         if args[:3] == ("gh", "pr", "create"):
             if self.fail_create:
                 raise subprocess.CalledProcessError(1, args)

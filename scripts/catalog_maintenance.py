@@ -19,6 +19,7 @@ from catalog_core import (
 from catalog_maintenance_policy import FILES, load, rebase_pending, request_change
 
 BRANCH = "automation/catalog-maintenance"
+TITLE = "chore(catalog): withdraw or restore catalog versions"
 
 
 def summary(message: str) -> None:
@@ -168,7 +169,7 @@ def plan_request(
 def merge_request(pr: dict, option: str) -> None:
     args = ["gh", "pr", "merge", str(pr["number"]), "--repo", REPOSITORY, option]
     if option == "--auto":
-        args.append("--squash")
+        args.extend(["--squash", "--subject", TITLE])
     command(*args)
 
 
@@ -187,6 +188,8 @@ def update_body(pr: dict | None, audit: str) -> dict:
                 "pr",
                 "edit",
                 str(pr["number"]),
+                "--title",
+                TITLE,
                 "--repo",
                 REPOSITORY,
                 "--body-file",
@@ -204,7 +207,7 @@ def update_body(pr: dict | None, audit: str) -> dict:
                 "--base",
                 "main",
                 "--title",
-                "Withdraw or restore catalog versions",
+                TITLE,
                 "--body-file",
                 str(body_file),
             )
@@ -228,7 +231,12 @@ def write_proposal(
         "git",
         "commit",
         "-m",
-        request.operation + " " + request.repository + " " + request.version,
+        "chore(catalog): "
+        + request.operation.lower()
+        + " "
+        + request.repository
+        + " "
+        + request.version,
         cwd=root,
     )
     changed = set(

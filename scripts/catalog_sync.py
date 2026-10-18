@@ -24,6 +24,7 @@ from catalog_maintenance_policy import load, scoped_validation
 
 BRANCH = "automation/catalog-update"
 FILES = ("manifest.json", "history.json")
+TITLE = "chore(catalog): update verified plugin catalog"
 
 
 def problem_issue(message: str | None) -> None:
@@ -178,7 +179,9 @@ def require_current_main(root: Path, base_sha: str) -> None:
 def merge_publication(pr: dict, option: str) -> None:
     args = ["gh", "pr", "merge", str(pr["number"]), "--repo", REPOSITORY, option]
     if option == "--auto":
-        args.extend(["--squash", "--match-head-commit", pr["headRefOid"]])
+        args.extend(
+            ["--squash", "--subject", TITLE, "--match-head-commit", pr["headRefOid"]]
+        )
     command(*args)
 
 
@@ -190,7 +193,7 @@ def write_publication(root: Path, base_sha: str, candidate: dict, lease: str) ->
         (root / name).write_text(json.dumps(candidate[name], indent=4) + "\n")
     configure_app_git_author(root, command)
     command("git", "add", *FILES, cwd=root)
-    command("git", "commit", "-m", "Update verified plugin catalog", cwd=root)
+    command("git", "commit", "-m", TITLE, cwd=root)
     head = command("git", "rev-parse", "HEAD", cwd=root)
     if not matches_candidate(root, base_sha, head, candidate):
         raise VerificationError(
@@ -258,7 +261,7 @@ def publish_pr(root: Path, base_sha: str, before: dict, candidate: dict) -> None
             "--base",
             "main",
             "--title",
-            "Update verified plugin catalog",
+            TITLE,
             "--body",
             "Verified public stable releases. No policy or withdrawal changes.",
         )
@@ -271,6 +274,9 @@ def publish_pr(root: Path, base_sha: str, before: dict, candidate: dict) -> None
             time.sleep(1)
     else:
         raise VerificationError("Expected one App publication PR at the verified head")
+    command(
+        "gh", "pr", "edit", str(pr["number"]), "--repo", REPOSITORY, "--title", TITLE
+    )
     merge_publication(pr, "--auto")
 
 

@@ -143,6 +143,8 @@ Other naming conventions or receipt policies require a reviewed adapter, without
 
 ## Test the catalog
 
+Use Conventional Commit messages and PR titles, such as `fix(catalog): verify release metadata`, `chore(deps): update tooling`, or `docs: clarify setup`. CI checks PR titles, which should be used as the squash commit title when merging. Automated catalog commits and squash merges use `chore(catalog): ...`; Renovate uses `chore(deps): ...`.
+
 In this checkout, select the Python version in `.python-version`, then install the check tools and run the checks used by `catalog-validate`:
 
 ```sh
