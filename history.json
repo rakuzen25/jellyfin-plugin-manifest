@@ -35,5 +35,38 @@
             "archive": "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"
         },
         "published_at": "2026-10-14T12:20:26Z"
+    },
+    "70a9d327-7e98-4201-88a5-724d39366c40/0.2.1.0": {
+        "repository": "rakuzen25/jellyfin-plugin-lyricbridge",
+        "tag": "v0.2.1",
+        "release_id": 416191810,
+        "commit": "c12a5cfe1ce0550627c4644d249a8866404383a0",
+        "artifacts": {
+            "lyricbridge-0.2.1.zip": "521d65e6a4d8b3d2bb1e63d92be5880b52b8f05e27f5387dc5967edd2a545360",
+            "lyricbridge-source-0.2.1.zip": "dd1feea75cd906abc6421ab48a384af620e21476a78b949286f67e830a4f944b",
+            "lyricbridge-web-0.2.1.zip": "c0f64938010718ed2fb557b0905df2064925dc71010281e5b083b18c0cc1afd7",
+            "manifest.json": "aafb879ee648efa37d03140630155e0780e91ef63d2a6bb0831bee4400a0244c",
+            "SHA256SUMS": "0f453f47d028e4d5b23352f46ec6eb60a0782a70ef5d8b25bcc28ff96be22640"
+        },
+        "run_id": "39090359445",
+        "entry": {
+            "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
+            "name": "LyricBridge",
+            "owner": "rakuzen25",
+            "overview": "Word-by-word karaoke lyrics, translations, and pronunciation for Jellyfin\n      Web.",
+            "description": "Follow your music with synchronized karaoke lyrics in Jellyfin Web.\n      Search multiple lyric providers, import lyrics, and save your preferred versions. Display\n      translations and pronunciation alongside the original lyrics, with optional tools to generate\n      missing language support or transcribe audio.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.2.1.0",
+                    "changelog": "### Bug Fixes\n\n* fix ci ([f402782](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/f4027822022f45e7b3d0ad5963dcd0c765bb3998))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.2.1/lyricbridge-0.2.1.zip",
+                    "checksum": "d031857eab82928d9d746725c83c708c",
+                    "timestamp": "2026-10-18T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-18T03:28:37Z"
     }
 }
