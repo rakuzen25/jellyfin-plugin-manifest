@@ -9,7 +9,12 @@ from enum import Enum
 from pathlib import Path
 
 from catalog_core import (
-    REPOSITORY, GitHub, VerificationError, app_author, command, configure_app_git_author,
+    REPOSITORY,
+    GitHub,
+    VerificationError,
+    app_author,
+    command,
+    configure_app_git_author,
 )
 from catalog_maintenance_policy import FILES, load, rebase_pending, request_change
 

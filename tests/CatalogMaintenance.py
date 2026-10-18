@@ -201,7 +201,9 @@ class MaintenanceTests(unittest.TestCase):
                     "number": 7,
                     "url": "https://github.com/" + core.REPOSITORY + "/pull/7",
                     "author": {
-                        "login": "other-app[bot]" if foreign else "test-catalog-app[bot]"
+                        "login": "other-app[bot]"
+                        if foreign
+                        else "test-catalog-app[bot]"
                     },
                     "body": "Previous authorized request",
                     "baseRefName": "main",
@@ -243,7 +245,10 @@ class MaintenanceTests(unittest.TestCase):
                         [
                             {
                                 "number": 8,
-                                "author": {"login": "app/test-catalog-app", "is_bot": True},
+                                "author": {
+                                    "login": "app/test-catalog-app",
+                                    "is_bot": True,
+                                },
                                 "baseRefName": "main",
                                 "isCrossRepository": False,
                                 "url": "https://github.com/"
@@ -293,9 +298,16 @@ class MaintenanceTests(unittest.TestCase):
         calls, error = self.run_mock()
         self.assertIsNone(error)
         arguments = [call.args for call in calls]
-        self.assertIn(("git", "config", "user.name", "test-catalog-app[bot]"), arguments)
         self.assertIn(
-            ("git", "config", "user.email", "123456+test-catalog-app[bot]@users.noreply.github.com"),
+            ("git", "config", "user.name", "test-catalog-app[bot]"), arguments
+        )
+        self.assertIn(
+            (
+                "git",
+                "config",
+                "user.email",
+                "123456+test-catalog-app[bot]@users.noreply.github.com",
+            ),
             arguments,
         )
         self.assertTrue(

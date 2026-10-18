@@ -35,9 +35,7 @@ class VerificationError(ValueError):
 def app_author(author: dict) -> bool:
     slug = os.environ["PLUGIN_APP_SLUG"]
     # gh's GraphQL export uses app/<slug>; REST uses <slug>[bot].
-    return (
-        author.get("login") == "app/" + slug and author.get("is_bot") is True
-    ) or (
+    return (author.get("login") == "app/" + slug and author.get("is_bot") is True) or (
         author.get("login") == slug + "[bot]" and author.get("is_bot") is not False
     )
 
@@ -49,8 +47,11 @@ def configure_app_git_author(root: Path, run) -> None:
         raise VerificationError("Expected a numeric GitHub App bot user ID")
     run("git", "config", "user.name", login, cwd=root)
     run(
-        "git", "config", "user.email",
-        f"{user_id}+{login}@users.noreply.github.com", cwd=root,
+        "git",
+        "config",
+        "user.email",
+        f"{user_id}+{login}@users.noreply.github.com",
+        cwd=root,
     )
 
 

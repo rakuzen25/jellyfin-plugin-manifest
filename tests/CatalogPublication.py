@@ -452,7 +452,10 @@ class CatalogPublicationTests(unittest.TestCase):
     def test_commit_identity_rejects_missing_bot_user_id(self):
         for user_id in ("", "null", "0", "someone-else"):
             with self.subTest(user_id=user_id):
-                with patch.object(core, "command", return_value=user_id) as run, self.assertRaises(core.VerificationError):
+                with (
+                    patch.object(core, "command", return_value=user_id) as run,
+                    self.assertRaises(core.VerificationError),
+                ):
                     core.configure_app_git_author(Path("/tmp"), run)
                 self.assertEqual(run.call_count, 1)
 

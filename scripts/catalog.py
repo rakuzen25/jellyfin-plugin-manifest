@@ -11,12 +11,13 @@ from urllib.parse import urlparse
 
 
 def validate_catalog(value: object) -> list[dict]:
+    # Schema failures are invalid JSON values, including fields of the wrong type.
     if not isinstance(value, list):
-        raise ValueError("Catalog must be an array")
+        raise ValueError("Catalog must be an array")  # noqa: TRY004
     guids: set[str] = set()
     for plugin in value:
         if not isinstance(plugin, dict) or not isinstance(plugin.get("guid"), str):
-            raise ValueError("Invalid plugin entry")
+            raise ValueError("Invalid plugin entry")  # noqa: TRY004
         try:
             guid = str(uuid.UUID(plugin["guid"]))
         except ValueError as error:
@@ -32,7 +33,7 @@ def validate_catalog(value: object) -> list[dict]:
         seen: set[str] = set()
         for release in versions:
             if not isinstance(release, dict):
-                raise ValueError("Invalid version entry")
+                raise ValueError("Invalid version entry")  # noqa: TRY004
             for key in ("version", "targetAbi"):
                 if not isinstance(release.get(key), str) or not re.fullmatch(
                     r"\d+\.\d+\.\d+\.\d+", release[key]
@@ -49,7 +50,7 @@ def validate_catalog(value: object) -> list[dict]:
             seen.add(version)
             url = release.get("sourceUrl")
             if not isinstance(url, str):
-                raise ValueError("Release download URL is required")
+                raise ValueError("Release download URL is required")  # noqa: TRY004
             parsed = urlparse(url)
             if (
                 parsed.scheme != "https"
@@ -69,9 +70,9 @@ def validate_catalog(value: object) -> list[dict]:
                 raise ValueError("Jellyfin requires a 32-digit MD5 package checksum")
             timestamp = release.get("timestamp")
             if not isinstance(timestamp, str):
-                raise ValueError("Release timestamp is required")
+                raise ValueError("Release timestamp is required")  # noqa: TRY004
             try:
-                date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                date = datetime.fromisoformat(timestamp)
                 if date.tzinfo is None:
                     raise ValueError("Missing timezone")
             except ValueError as error:

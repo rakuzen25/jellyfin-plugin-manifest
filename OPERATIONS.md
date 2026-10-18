@@ -143,11 +143,18 @@ Other naming conventions or receipt policies require a reviewed adapter, without
 
 ## Test the catalog
 
-In this checkout, select the Python version in `.python-version`, then run the suite used by `catalog-validate`:
+In this checkout, select the Python version in `.python-version`, then install the check tools and run the checks used by `catalog-validate`:
 
 ```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements-check.txt
+python3 -m ruff format --check scripts tests
+python3 -m ruff check scripts tests
 python3 -m unittest discover -s tests -p 'Catalog*.py'
 ```
+
+To apply Python formatting locally, run `python3 -m ruff format scripts tests`.
 
 The suite uses deterministic GitHub fixtures and disposable local Git repositories to test merging, release policy, maintenance, and publication. It needs Git but no GitHub credentials or remote writes, and removes temporary repositories afterward. Confirm that it exits successfully with `OK`.
 
