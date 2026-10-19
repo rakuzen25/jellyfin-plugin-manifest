@@ -1,0 +1,9 @@
+{
+    "printWidth": 150,
+    "tabWidth": 4,
+    "trailingComma": "all",
+    "overrides": [
+        { "files": ".*rc", "options": { "trailingComma": "none" } },
+        { "files": ["*.yml", "*.yaml"], "options": { "tabWidth": 2 } }
+    ]
+}

@@ -15,10 +15,10 @@ Submit code, policy, and tooling changes through reviewed pull requests. Run the
 
 Shared modules keep validation independent of publication:
 
-| Module | Responsibility |
-| --- | --- |
-| `scripts/catalog.py` | Validate and merge catalog entries. |
-| `scripts/catalog_core.py` | Verify releases and reconcile history. |
+| Module                                  | Responsibility                                          |
+| --------------------------------------- | ------------------------------------------------------- |
+| `scripts/catalog.py`                    | Validate and merge catalog entries.                     |
+| `scripts/catalog_core.py`               | Verify releases and reconcile history.                  |
 | `scripts/catalog_maintenance_policy.py` | Validate maintenance changes against protected history. |
 
 The sync and maintenance entry points import these modules without importing one another.
@@ -51,9 +51,9 @@ Configure these settings before enabling publication:
 
 The automated paths use separate branches and the same required check:
 
-| Path | Branch | Files changed |
-| --- | --- | --- |
-| Verified release additions | `automation/catalog-update` | `history.json`, generated `manifest.json` |
+| Path                                      | Branch                           | Files changed                                 |
+| ----------------------------------------- | -------------------------------- | --------------------------------------------- |
+| Verified release additions                | `automation/catalog-update`      | `history.json`, generated `manifest.json`     |
 | Owner-requested withdrawal or restoration | `automation/catalog-maintenance` | `withdrawals.json`, generated `manifest.json` |
 
 Both paths request auto-merge after checking the proposal. Ordinary code, policy, tooling, and manual withdrawal edits require reviewed pull requests; the updater doesn't enable auto-merge for them.
@@ -114,15 +114,15 @@ Invalid versions, such as `00.1.3.0`, leave the manifest untouched. Keep history
 
 Use the workflow log and integrity issue to choose a recovery action:
 
-| Symptom | Action |
-| --- | --- |
-| Missing assets, unavailable evidence, API failure, or changed release | Resolve the cause, then rerun **Reconcile plugin catalog**. Preserve existing releases and history. |
-| `main` advances during preparation | Rerun reconciliation or the maintenance request against the new base. |
-| Push succeeds but publication pull request creation fails | Rerun reconciliation. Recovery requires the branch to contain the captured `main` commit, change only regular non-executable catalog files, and exactly match the freshly verified candidate. |
-| Unmatched or stale publication branch | Inspect its diff and resolve or remove it as owner before retrying. Don't delete a branch containing a pending owner decision. |
-| Conflicting newer maintenance decision or non-App branch | Resolve the existing pull request before retrying; automation won't overwrite the conflict. |
-| Failed refresh leaves auto-merge disabled | Explicitly retry the unchanged proposal to resume auto-merge after validation. |
-| Actionlint rejects only `concurrency.queue` | Ignore only that unsupported-key diagnostic on older versions. Keep other diagnostics enabled; the policy test checks both workflows' queue settings. |
+| Symptom                                                               | Action                                                                                                                                                                                        |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Missing assets, unavailable evidence, API failure, or changed release | Resolve the cause, then rerun **Reconcile plugin catalog**. Preserve existing releases and history.                                                                                           |
+| `main` advances during preparation                                    | Rerun reconciliation or the maintenance request against the new base.                                                                                                                         |
+| Push succeeds but publication pull request creation fails             | Rerun reconciliation. Recovery requires the branch to contain the captured `main` commit, change only regular non-executable catalog files, and exactly match the freshly verified candidate. |
+| Unmatched or stale publication branch                                 | Inspect its diff and resolve or remove it as owner before retrying. Don't delete a branch containing a pending owner decision.                                                                |
+| Conflicting newer maintenance decision or non-App branch              | Resolve the existing pull request before retrying; automation won't overwrite the conflict.                                                                                                   |
+| Failed refresh leaves auto-merge disabled                             | Explicitly retry the unchanged proposal to resume auto-merge after validation.                                                                                                                |
+| Actionlint rejects only `concurrency.queue`                           | Ignore only that unsupported-key diagnostic on older versions. Keep other diagnostics enabled; the policy test checks both workflows' queue settings.                                         |
 
 Publication verifies against a captured protected `main` commit and checks `main` again before pushing or recovering a pull request. Existing branches use the observed SHA as the push lease; new branches require an absent remote branch. Local publication requires a clean tracked working tree.
 
