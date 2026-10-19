@@ -68,5 +68,38 @@
             ]
         },
         "published_at": "2026-10-18T03:28:37Z"
+    },
+    "70a9d327-7e98-4201-88a5-724d39366c40/0.2.2.0": {
+        "repository": "rakuzen25/jellyfin-plugin-lyricbridge",
+        "tag": "v0.2.2",
+        "release_id": 416807845,
+        "commit": "38671d7db6f26c31998a69a18d726f7c08c86721",
+        "artifacts": {
+            "lyricbridge-0.2.2.zip": "95be5178ac0ed991527f5fb46c7c54c5a8eb869da453f6a87fb8a4168116b338",
+            "lyricbridge-source-0.2.2.zip": "c1d47d329a7130e9a102b9cae02d73b30dd8fb74b0d200dcf49142e365efbf18",
+            "lyricbridge-web-0.2.2.zip": "aa4a93f1e91f6a8e35df315167c3b6021efe24111473e1ed303bceaa0d210f3a",
+            "manifest.json": "16d15082f5922f916487dddab99d6e13fa8c2013155f4aa4b38003ff2a15c428",
+            "SHA256SUMS": "1e6452abcda4e2c13a7a8483d82ad806116bb36ba598050675ca09c1f7e2c1e6"
+        },
+        "run_id": "39183196329",
+        "entry": {
+            "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
+            "name": "LyricBridge",
+            "owner": "rakuzen25",
+            "overview": "Word-by-word karaoke lyrics, translations, and pronunciation for Jellyfin\n      Web.",
+            "description": "Follow your music with synchronized karaoke lyrics in Jellyfin Web.\n      Search multiple lyric providers, import lyrics, and save your preferred versions. Display\n      translations and pronunciation alongside the original lyrics, with optional tools to generate\n      missing language support or transcribe audio.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.2.2.0",
+                    "changelog": "### Features\n\n* improve config editing experience ([fb4b976](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/fb4b976dfdff771ec0a03ef97c7c045b1d8e7cd8))\n\n\n### Bug Fixes\n\n* **deps:** update dependency lucide to v1.59.0 ([#41](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/issues/41)) ([ef17f53](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/ef17f535db579dfb38584eb39573aaa7adf0cdaf))\n* fix credentials input ([d8e7268](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/d8e7268366f3192a4eff6f32d4bd9825bde3d2e0))\n* fix dupliated reason ([41d80e2](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/41d80e290f6d0d0a107a074530ff82b844cf8179))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.2.2/lyricbridge-0.2.2.zip",
+                    "checksum": "01cfe776cbba34f751eb0fb64f1ae1e4",
+                    "timestamp": "2026-10-19T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-19T01:08:00Z"
     }
 }
