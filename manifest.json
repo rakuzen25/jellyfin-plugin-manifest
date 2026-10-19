@@ -8,6 +8,14 @@
         "category": "Music",
         "versions": [
             {
+                "version": "0.2.2.0",
+                "changelog": "### Features\n\n* improve config editing experience ([fb4b976](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/fb4b976dfdff771ec0a03ef97c7c045b1d8e7cd8))\n\n\n### Bug Fixes\n\n* **deps:** update dependency lucide to v1.59.0 ([#41](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/issues/41)) ([ef17f53](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/ef17f535db579dfb38584eb39573aaa7adf0cdaf))\n* fix credentials input ([d8e7268](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/d8e7268366f3192a4eff6f32d4bd9825bde3d2e0))\n* fix dupliated reason ([41d80e2](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/41d80e290f6d0d0a107a074530ff82b844cf8179))",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.2.2/lyricbridge-0.2.2.zip",
+                "checksum": "01cfe776cbba34f751eb0fb64f1ae1e4",
+                "timestamp": "2026-10-19T00:00:00Z"
+            },
+            {
                 "version": "0.2.1.0",
                 "changelog": "### Bug Fixes\n\n* fix ci ([f402782](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/f4027822022f45e7b3d0ad5963dcd0c765bb3998))",
                 "targetAbi": "12.2.0.0",
