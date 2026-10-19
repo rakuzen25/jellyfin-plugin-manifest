@@ -437,6 +437,31 @@ class CatalogPublicationTests(unittest.TestCase):
         }
         with patch.object(github, "json", return_value=metadata):
             self.assertEqual(github.bootstrap_receipt(SOURCE, proof)["run_id"], "42")
+        # Current reusable workflows use a generic name; historical proof remains valid.
+        with patch.object(
+            github,
+            "json",
+            return_value=dict(metadata, name="plugin-validation-receipt"),
+        ):
+            self.assertEqual(
+                "42",
+                github.bootstrap_receipt(
+                    SOURCE,
+                    proof,
+                    {
+                        "bootstrap_artifacts": [
+                            "lyricbridge-validation-receipt",
+                            "plugin-validation-receipt",
+                        ]
+                    },
+                )["run_id"],
+            )
+            with self.assertRaises(core.VerificationError):
+                github.bootstrap_receipt(
+                    SOURCE,
+                    proof,
+                    {"bootstrap_artifacts": ["lyricbridge-validation-receipt"]},
+                )
         for broken in (
             dict(metadata, digest="sha256:" + "0" * 64),
             dict(metadata, workflow_run={"id": 43}),

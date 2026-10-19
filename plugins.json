@@ -3,8 +3,61 @@
         "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
         "prefix": "lyricbridge",
         "receipt_schema": 3,
-        "groups": ["metadata", "frontend", "backend", "tooling", "workflow", "rendering", "performance", "artifacts"],
-        "validation_workflows": [".github/workflows/release-please.yml", ".github/workflows/release.yml", ".github/workflows/validate.yml"],
-        "attestation_workflow": ".github/workflows/release.yml"
+        "groups": [
+            "metadata",
+            "frontend",
+            "backend",
+            "tooling",
+            "workflow",
+            "rendering",
+            "performance",
+            "artifacts"
+        ],
+        "validation_workflows": [
+            ".github/workflows/release-please.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/validate.yml"
+        ],
+        "attestation_workflow": ".github/workflows/release.yml",
+        "receipt_schemas": [
+            3,
+            4
+        ],
+        "web": true,
+        "toolkit_repository": "rakuzen25/jellyfin-plugin-toolkit",
+        "toolkit_attestation_workflow": ".github/workflows/release.yml",
+        "bootstrap_artifacts": [
+            "lyricbridge-validation-receipt",
+            "plugin-validation-receipt"
+        ]
+    },
+    "rakuzen25/jellyfin-plugin-music-metadata-manager": {
+        "guid": "86400cc2-d51e-4695-82c0-5d4f61d3a1f7",
+        "prefix": "music-metadata-manager",
+        "receipt_schema": 4,
+        "groups": [
+            "metadata",
+            "frontend",
+            "backend",
+            "tooling",
+            "workflow",
+            "artifacts"
+        ],
+        "validation_workflows": [
+            ".github/workflows/release-please.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/validate.yml"
+        ],
+        "attestation_workflow": ".github/workflows/release.yml",
+        "receipt_schemas": [
+            4
+        ],
+        "web": false,
+        "toolkit_repository": "rakuzen25/jellyfin-plugin-toolkit",
+        "toolkit_attestation_workflow": ".github/workflows/release.yml",
+        "bootstrap_artifact": "plugin-validation-receipt",
+        "bootstrap_artifacts": [
+            "plugin-validation-receipt"
+        ]
     }
 }

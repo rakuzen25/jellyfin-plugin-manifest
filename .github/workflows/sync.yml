@@ -39,7 +39,10 @@ jobs:
           client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
           private-key: ${{ secrets.PLUGIN_APP_PRIVATE_KEY }}
           owner: rakuzen25
-          repositories: jellyfin-plugin-lyricbridge
+          repositories: |
+            jellyfin-plugin-lyricbridge
+            jellyfin-plugin-music-metadata-manager
+            jellyfin-plugin-toolkit
           permission-contents: read
           permission-actions: read
           permission-attestations: read

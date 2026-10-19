@@ -66,7 +66,7 @@ Configure allowed repositories, immutable plugin GUIDs, asset prefixes, and evid
 
 Scheduled reconciliation runs at **06:23 UTC** daily. Publishers can send a `plugin-published` repository dispatch; its payload is only a hint. Manual refresh uses the same authenticated release and tag APIs.
 
-Each release must provide the plugin, web, and source ZIPs, `manifest.json`, and `SHA256SUMS`. A durable `validation.json` receipt must hash those five assets; exclude it from its own inventory and from `SHA256SUMS`.
+Each release must provide the plugin and source ZIPs, `manifest.json`, and `SHA256SUMS`. A web ZIP is required only when the repository policy declares `web: true`. A durable `validation.json` receipt must hash the exact policy-required assets; exclude it from its own inventory and from `SHA256SUMS`.
 
 Verification checks:
 
@@ -186,3 +186,7 @@ When configuring or changing automation, confirm these behaviors on GitHub:
 Local fixtures don't establish GitHub authentication, Sigstore verification, release events, branch protection, or auto-merge behavior.
 
 For ongoing changes, use [withdrawal and restoration](#withdraw-or-restore-a-version-from-actions), [plugin onboarding](#onboard-another-plugin), or [recovery actions](#recover-failed-updates).
+
+## Shared toolkit releases
+
+Schema 4 receipts identify the toolkit lock from the tagged plugin source. Verification downloads and hashes the stable toolkit release archive and requires the approved reusable signer workflow at its exact tag commit. Schema 3 LyricBridge history retains its original signer and artifact requirements. Update plugin allowlists and the GitHub App installation when onboarding another repository.
