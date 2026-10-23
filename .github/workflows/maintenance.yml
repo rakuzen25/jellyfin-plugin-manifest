@@ -48,6 +48,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: .python-version
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --no-dev
+      - name: Install pinned GitHub CLI
+        run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
       - name: Create read-only source verification token
         continue-on-error: true
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -73,7 +80,7 @@ jobs:
           REQUEST_VERSION: ${{ inputs.version }}
           REQUEST_REASON: ${{ inputs.reason }}
         run: >-
-          python3 scripts/catalog_maintenance.py
+          uv run --no-sync python scripts/catalog_maintenance.py
           --operation "$REQUEST_OPERATION" --repository "$REQUEST_REPOSITORY"
           --version "$REQUEST_VERSION" --reason "$REQUEST_REASON"
       - name: Audit remaining catalog integrity without blocking maintenance
@@ -81,7 +88,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.source.outputs.token }}
-        run: python3 scripts/catalog_sync.py validate
+        run: uv run --no-sync python scripts/catalog_sync.py validate
       - name: Report unrelated integrity warning
         if: steps.audit.outcome == 'failure'
         run: echo 'Remaining catalog integrity checks failed; maintenance is not blocked. Review the audit log and scheduled reconciliation issue.' >> "$GITHUB_STEP_SUMMARY"

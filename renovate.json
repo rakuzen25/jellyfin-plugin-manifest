@@ -1,7 +1,45 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["config:recommended"],
+    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.4.3"],
     "semanticCommits": "enabled",
     "semanticCommitType": "chore",
-    "semanticCommitScope": "deps"
+    "semanticCommitScope": "deps",
+    "packageRules": [
+        {
+            "matchPackageNames": ["rakuzen25/jellyfin-plugin-toolkit"],
+            "matchManagers": ["renovate-config"],
+            "commitMessageTopic": "shared tooling policy",
+            "automerge": false,
+            "groupName": null
+        }
+    ],
+    "customManagers": [
+        {
+            "customType": "regex",
+            "managerFilePatterns": ["/^toolchain\\.json$/"],
+            "matchStrings": ["\"gh\":\\s*\"(?<currentValue>[^\"]+)\""],
+            "depNameTemplate": "cli/cli",
+            "datasourceTemplate": "github-releases",
+            "extractVersionTemplate": "^v(?<version>.*)$",
+            "versioningTemplate": "semver"
+        },
+        {
+            "customType": "regex",
+            "managerFilePatterns": ["/^toolchain\\.json$/"],
+            "matchStrings": [
+                "\"(?:actionlint|renovate)\":\\s*\"(?<depName>[^\":]+):(?<currentValue>[^\"@]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+            ],
+            "datasourceTemplate": "docker",
+            "versioningTemplate": "docker"
+        },
+        {
+            "customType": "regex",
+            "managerFilePatterns": ["/^pyproject\\.toml$/"],
+            "matchStrings": ["required-version = \"==(?<currentValue>[^\"]+)\""],
+            "depNameTemplate": "uv",
+            "packageNameTemplate": "astral-sh/uv",
+            "datasourceTemplate": "github-releases",
+            "versioningTemplate": "pep440"
+        }
+    ]
 }

@@ -1,3 +1,17 @@
+[project]
+name = "jellyfin-plugin-manifest"
+version = "0.0.0"
+requires-python = ">=3.15,<3.16"
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff==0.17.2"]
+
+[tool.uv]
+package = false
+required-version = "==0.13.4"
+python-preference = "only-system"
+
 [tool.ruff]
 target-version = "py315"
 include = ["scripts/**/*.py", "tests/**/*.py"]

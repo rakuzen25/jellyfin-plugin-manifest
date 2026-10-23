@@ -1,8 +1,4 @@
 packages: []
-overrides:
-  "@typescript/old": "npm:typescript@6.0.3"
-allowBuilds:
-  esbuild: true
 strictDepBuilds: true
 pmOnFail: error
 verifyDepsBeforeRun: false
