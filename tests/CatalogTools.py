@@ -73,8 +73,11 @@ class ToolTests(unittest.TestCase):
             package["packageManager"], "pnpm@" + package["engines"]["pnpm"]
         )
         python = (tools.ROOT / ".python-version").read_text().strip()
-        self.assertEqual(python, "3.15.1")
         project = tomllib.loads((tools.ROOT / "pyproject.toml").read_text())
+        self.assertEqual(
+            "py" + "".join(python.split(".")[:2]),
+            project["tool"]["ruff"]["target-version"],
+        )
         version = project["tool"]["uv"]["required-version"].removeprefix("==")
         for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
             text = workflow.read_text()
