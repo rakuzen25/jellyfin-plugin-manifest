@@ -134,5 +134,37 @@
             ]
         },
         "published_at": "2026-10-23T06:17:17Z"
+    },
+    "86400cc2-d51e-4695-82c0-5d4f61d3a1f7/0.2.1.0": {
+        "repository": "rakuzen25/jellyfin-plugin-music-metadata-manager",
+        "tag": "v0.2.1",
+        "release_id": 421508773,
+        "commit": "80687cc8a03f88a0b632ab4ee436a3f9216466f8",
+        "artifacts": {
+            "manifest.json": "f5416aaf9aa69ade5e51e5304e16d80524ee830d99117d1c00e88d90837d2168",
+            "music-metadata-manager-0.2.1.zip": "ba54242f0b9bbfe83a5691d849c08079363a1eab679b618bf78f0e8a5edb09a6",
+            "music-metadata-manager-source-0.2.1.zip": "266ed0259f1f5afecc2ed92feed32065a9bcdb124f6cae399b0a0223e035e11f",
+            "SHA256SUMS": "1dc2acdd9305c34c3591660d5d788cfa430192f54e4a2af26776f5fc00925f00"
+        },
+        "run_id": "39910553844",
+        "entry": {
+            "guid": "86400cc2-d51e-4695-82c0-5d4f61d3a1f7",
+            "name": "Music Metadata Manager",
+            "owner": "rakuzen25",
+            "overview": "Review music metadata corrections, artist identities and library issues",
+            "description": "Explicit music metadata corrections with preview and activation; original media stays unchanged.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.2.1.0",
+                    "changelog": "### Miscellaneous Chores\n\n* update gitignore ([936c72f](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/936c72fb4683b0c08d66801c2597880168a466a3))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/releases/download/v0.2.1/music-metadata-manager-0.2.1.zip",
+                    "checksum": "a371a436d95b59d6f57298aca4304a4e",
+                    "timestamp": "2026-10-23T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-23T06:43:52Z"
     }
 }
