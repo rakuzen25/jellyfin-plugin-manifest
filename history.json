@@ -63,5 +63,70 @@
             ]
         },
         "published_at": "2026-10-23T06:43:52Z"
+    },
+    "70a9d327-7e98-4201-88a5-724d39366c40/0.3.2.0": {
+        "repository": "rakuzen25/jellyfin-plugin-lyricbridge",
+        "tag": "v0.3.2",
+        "release_id": 421610354,
+        "commit": "4e6c941990708d616c6dd0bfe12a4e53b079b354",
+        "artifacts": {
+            "lyricbridge-0.3.2.zip": "10d495ae59a9d0d439a517f9e418c6353477a385bd4c88354c03ebd667a4fc86",
+            "lyricbridge-source-0.3.2.zip": "c8a4281a4d416afd14196ea65f7e25fed2ee7b93071f9db507105513937e860b",
+            "lyricbridge-web-0.3.2.zip": "f75767d6e941002040567bd31d7f173fc854ac857b9981ca39be599a348b85c1",
+            "manifest.json": "1da408eeb946c6817b01a1310f9cafa5a05cc466087a7bb13bbd5d57ad9c5606",
+            "SHA256SUMS": "4c2077e81391315e2f266d2cd199a94b7c120fee96ef76c973080e778d90a235"
+        },
+        "run_id": "39925304444",
+        "entry": {
+            "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
+            "name": "LyricBridge",
+            "owner": "rakuzen25",
+            "overview": "Word-by-word karaoke lyrics, translations, and pronunciation for Jellyfin\n      Web.",
+            "description": "Follow your music with synchronized karaoke lyrics in Jellyfin Web.\n      Search multiple lyric providers, import lyrics, and save your preferred versions. Display\n      translations and pronunciation alongside the original lyrics, with optional tools to generate\n      missing language support or transcribe audio.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.3.2.0",
+                    "changelog": "### Miscellaneous Chores\n\n* bump version ([9b7cbe8](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/9b7cbe811cade738907336648f5cb54f5d2ca5aa))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.3.2/lyricbridge-0.3.2.zip",
+                    "checksum": "68e1aa5c8e5b48676dc3adb36474653b",
+                    "timestamp": "2026-10-23T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-23T09:06:37Z"
+    },
+    "86400cc2-d51e-4695-82c0-5d4f61d3a1f7/0.2.2.0": {
+        "repository": "rakuzen25/jellyfin-plugin-music-metadata-manager",
+        "tag": "v0.2.2",
+        "release_id": 421610125,
+        "commit": "a499eb8f3cadc7b09402e89c939328889acf462a",
+        "artifacts": {
+            "manifest.json": "9e1689bfd8a53ff38325a5f41b342fd3e3d0fc223b8f15bcb98c0251e7916688",
+            "music-metadata-manager-0.2.2.zip": "ed48bd8647b0544bc261ba9bf40b782dfaad317d1562a054b85b99569681d6d9",
+            "music-metadata-manager-source-0.2.2.zip": "d117538fcf532b675cc634eceac396ccabeb33649763ed0287a7a2a9eedc1f99",
+            "SHA256SUMS": "19070df8d0766eb346e7a4051f9bb278ce951da48063af29be2371ef03475592"
+        },
+        "run_id": "39925288711",
+        "entry": {
+            "guid": "86400cc2-d51e-4695-82c0-5d4f61d3a1f7",
+            "name": "Music Metadata Manager",
+            "owner": "rakuzen25",
+            "overview": "Review music metadata corrections, artist identities and library issues",
+            "description": "Explicit music metadata corrections with preview and activation; original media stays unchanged.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.2.2.0",
+                    "changelog": "### Miscellaneous Chores\n\n* bump version ([1f8d21e](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/1f8d21e12010f85a1f3d160201485a3437b6d73c))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/releases/download/v0.2.2/music-metadata-manager-0.2.2.zip",
+                    "checksum": "8ce95af2a1393648369d37d05b916991",
+                    "timestamp": "2026-10-23T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-23T09:06:42Z"
     }
 }
