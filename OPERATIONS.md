@@ -29,8 +29,8 @@ Create an App for the catalog and its allowlisted plugin repositories:
 
 1. Open **Settings → Developer settings → GitHub Apps → New GitHub App**. Choose an available name, such as `rakuzen25-plugin-publisher`.
 2. Set the homepage to this repository, disable webhooks, and limit installation to your account. No callback URL or user authorization is needed.
-3. Grant repository **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write**, **Actions: Read-only**, and **Attestations: Read-only**. Metadata read is automatic; grant no organization, administration, or workflow-writing permissions.
-4. Install the App using **Only select repositories**: `jellyfin-plugin-lyricbridge` and `jellyfin-plugin-manifest`.
+3. Grant repository **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write**, **Actions: Read-only**, and **Attestations: Read-only**. Metadata read is automatic. The catalog does not request workflow-writing permission. If this same App also synchronizes plugin toolkit bindings, grant Workflows: Read and write to that installation; catalog jobs continue to request only their listed scopes. Grant no organization or administration permissions.
+4. Install the App using **Only select repositories**: `jellyfin-plugin-lyricbridge`, `jellyfin-plugin-music-metadata-manager`, `jellyfin-plugin-toolkit`, and `jellyfin-plugin-manifest`.
 5. Generate and securely store a private key. Add Actions variable `PLUGIN_APP_CLIENT_ID` with the App's Client ID and secret `PLUGIN_APP_PRIVATE_KEY` with the complete PEM key.
 
 Never commit the key or paste it into logs or issues. It can mint permissions on all installed repositories; keep installation narrow and rotate it when needed.
@@ -76,11 +76,7 @@ Verification checks:
 
 Missing assets, API failures, moved tags, and changed checksums stop publication and preserve the served manifest. Reconciliation opens or updates a deduplicated integrity issue and closes its issues after full recovery.
 
-Older releases without a public receipt can bootstrap through a nonexpired authenticated `lyricbridge-validation-receipt` artifact. History retains its original ZIP, bound to the artifact ID, authenticated SHA-256 digest, and validation run. Later checks use the saved archive and GitHub metadata, so archive expiry alone doesn't invalidate it.
-
-Deleted artifact metadata or originating runs make that evidence unavailable. If initial evidence has expired, lookup is exhausted, or no full receipt exists, wait for a qualifying release. Don't modify existing public releases to add evidence.
-
-Plugin publishers remain responsible for builds, downloads, source and license inventories, and fresh advisory assessment. Catalog verification doesn't rebuild plugins or run their browser suites.
+Only schema 7 public receipts with current toolkit provenance are accepted. Missing public receipts, historical receipt schemas, Actions artifact evidence, and old field aliases are rejected. Existing upstream release assets are never rewritten.
 
 ## Withdraw or restore a version from Actions
 
@@ -105,7 +101,7 @@ Required maintenance validation compares against the authenticated pull request 
 For a manually reviewed change, edit `withdrawals.json` with an allowed GUID, canonical version, and nonempty reason. Then regenerate the manifest:
 
 ```sh
-python3 scripts/catalog_sync.py withdraw
+uv run --no-sync python scripts/catalog_sync.py withdraw
 ```
 
 Invalid versions, such as `00.1.3.0`, leave the manifest untouched. Keep history intact and submit both `withdrawals.json` and `manifest.json` together.
@@ -134,7 +130,7 @@ Maintenance reapplies pending decisions when `main` advances and rejects conflic
 
 Before onboarding, prepare a stable release with the required evidence:
 
-1. Add its repository, immutable GUID, asset prefix, receipt schema, required groups, and approved workflow paths to `plugins.json` in a reviewed pull request.
+1. Add its repository, immutable GUID, asset prefix, required groups, and approved workflow paths to `plugins.json` in a reviewed pull request.
 2. Install the shared App on the plugin repository and configure its credentials.
 3. Extend the read-only source token repository lists in both [sync](.github/workflows/sync.yml) and [maintenance](.github/workflows/maintenance.yml) workflows.
 4. Adopt the durable receipt, attestation, and notification contract, then verify a stable release. Initial import selects only the latest stable release.
@@ -147,29 +143,37 @@ Use Conventional Commit messages and PR titles, such as `fix(catalog): verify re
 
 In this checkout, select the Python version in `.python-version`, then install the check tools and run the checks used by `catalog-validate`:
 
+Install Python 3.15.1, uv 0.13.4, Node 26.12.1, pnpm 12.15.0, and Docker. Python is selected through `.python-version`; uv uses the installed interpreter. Restore tools explicitly before checks:
+
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -r requirements-check.txt
-python3 -m ruff format --check scripts tests
-python3 -m ruff check scripts tests
-python3 -m unittest discover -s tests -p 'Catalog*.py'
+uv sync --locked
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+uv run --no-sync python scripts/tools.py check-config
 ```
 
-To apply Python formatting locally, run `python3 -m ruff format scripts tests`.
+Use `pnpm format` to apply formatting. The configuration check uses pinned Docker images and has no network access. GitHub CLI is pinned in `toolchain.json`; install the verified Linux AMD64 binary before live verification:
+
+```sh
+uv run --no-sync python scripts/tools.py install-gh --directory /tmp/catalog-tools
+export PATH="/tmp/catalog-tools:$PATH"
+```
+
+Renovate inherits the versioned shared tooling preset. Routine patch and minor updates can automerge after required checks and a one-day release delay. Major updates, runtime/compiler/package-manager minor upgrades, and changes to the shared preset require review. Package-specific policy remains local. The catalog does not install the toolkit package.
 
 The suite uses deterministic GitHub fixtures and disposable local Git repositories to test merging, release policy, maintenance, and publication. It needs Git but no GitHub credentials or remote writes, and removes temporary repositories afterward. Confirm that it exits successfully with `OK`.
 
 For live validation, install GitHub CLI (`gh`) and set `SOURCE_GH_TOKEN` or `GH_TOKEN` with source read access. This check verifies the current catalog without publishing:
 
 ```sh
-python3 scripts/catalog_sync.py validate
+uv run --no-sync python scripts/catalog_sync.py validate
 ```
 
 For discovery and installation checks, provide Docker and access to public plugin archives. With a nonempty manifest, run:
 
 ```sh
-python3 tests/CatalogDiscovery.py manifest.json
+uv run --no-sync python tests/CatalogDiscovery.py manifest.json
 ```
 
 Discovery starts and removes a disposable Jellyfin server; it doesn't run in the automated suite. Success prints `PASS: shared manifest discovered and exact public plugins installed/active in disposable Jellyfin 12.2`.
@@ -189,4 +193,4 @@ For ongoing changes, use [withdrawal and restoration](#withdraw-or-restore-a-ver
 
 ## Shared toolkit releases
 
-Schema 7 receipts identify the toolkit wheel and the SHA256 of `uv.lock` from the tagged plugin source. Verification checks the canonical released wheel URL, wheel and source distribution hashes, `SHA256SUMS`, and schema 2 `build-provenance.json` against the toolkit release tag. The approved reusable signer workflow must match that exact tag commit. Bootstrap receipts undergo the same toolkit provenance checks. Schema 3 LyricBridge history retains its original signer and artifact requirements. Update plugin allowlists and the GitHub App installation when onboarding another repository.
+Schema 7 receipts identify the toolkit wheel and the SHA256 of `uv.lock` from the tagged plugin source. Verification checks the canonical released wheel URL, wheel and source distribution hashes, `SHA256SUMS`, and schema 2 `build-provenance.json` against the toolkit release tag. The approved reusable signer workflow must match that exact tag commit. Update plugin allowlists and the GitHub App installation when onboarding another repository.

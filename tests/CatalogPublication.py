@@ -30,10 +30,11 @@ GROUPS = [
 POLICY = {
     "guid": GUID,
     "prefix": "lyricbridge",
-    "receipt_schema": 3,
+    "web": True,
+    "toolkit_repository": "rakuzen25/jellyfin-plugin-toolkit",
+    "toolkit_attestation_workflow": ".github/workflows/release.yml",
     "groups": GROUPS,
     "validation_workflows": [".github/workflows/release.yml"],
-    "attestation_workflow": ".github/workflows/release.yml",
 }
 
 
@@ -92,7 +93,7 @@ class FakeGitHub(core.GitHub):
             for name, data in sorted(files.items())
         ).encode()
         self.receipts[tag] = {
-            "schema": 3,
+            "schema": 7,
             "repository": SOURCE,
             "run_id": "42",
             "run_attempt": 1,
@@ -140,7 +141,7 @@ class FakeGitHub(core.GitHub):
     def download(self, url, destination, maximum=0, authenticated=False):
         destination.write_bytes(self.files[url])
 
-    def receipt(self, repository, policy, release, directory, commit, bootstrap=None):
+    def receipt(self, repository, policy, release, directory, commit):
         return self.receipts[release["tag_name"]]
 
 
@@ -314,7 +315,7 @@ class CatalogPublicationTests(unittest.TestCase):
             core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(len(history), 1)
 
-    def test_public_receipt_requires_attestation_and_bootstrap_cannot_use_expired_artifacts(
+    def test_public_receipt_requires_attestation_and_no_artifact_fallback(
         self,
     ):
         github = core.GitHub()
@@ -364,7 +365,9 @@ class CatalogPublicationTests(unittest.TestCase):
                 ),
                 patch.object(github, "download") as download_mock,
             ):
-                with self.assertRaisesRegex(core.VerificationError, "waiting"):
+                with self.assertRaisesRegex(
+                    core.VerificationError, "public validation.json"
+                ):
                     github.receipt(
                         SOURCE, POLICY, release, directory, self.github.commit
                     )
@@ -384,7 +387,13 @@ class CatalogPublicationTests(unittest.TestCase):
             }
         ]
         github = core.GitHub()
+        receipt_file = self.enterContext(
+            tempfile.NamedTemporaryFile(mode="w", suffix=".json")
+        )
+        receipt_file.write(json.dumps(self.github.receipts["v0.1.3"]))
+        receipt_file.flush()
         with (
+            patch.object(github, "toolkit_revision", return_value="b" * 40),
             patch.dict(core.os.environ, {"SOURCE_GH_TOKEN": "fixture-source-token"}),
             patch.object(
                 core.subprocess, "check_output", return_value=json.dumps(output)
@@ -398,8 +407,9 @@ class CatalogPublicationTests(unittest.TestCase):
                 ],
             ),
         ):
-            github.attest(SOURCE, POLICY, Path("validation.json"))
+            github.attest(SOURCE, POLICY, Path(receipt_file.name))
         with (
+            patch.object(github, "toolkit_revision", return_value="b" * 40),
             patch.dict(core.os.environ, {"SOURCE_GH_TOKEN": "fixture-source-token"}),
             patch.object(
                 core.subprocess, "check_output", return_value=json.dumps(output)
@@ -414,64 +424,7 @@ class CatalogPublicationTests(unittest.TestCase):
             ),
             self.assertRaises(core.VerificationError),
         ):
-            github.attest(SOURCE, POLICY, Path("validation.json"))
-
-    def test_bootstrap_archive_is_bound_to_github_digest_and_run_even_after_expiry(
-        self,
-    ):
-        import base64
-
-        github = core.GitHub()
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w") as zipped:
-            zipped.writestr(
-                "validation.json", json.dumps(self.github.receipts["v0.1.3"])
-            )
-        data = buffer.getvalue()
-        proof = {"artifact_id": 123, "archive": base64.b64encode(data).decode("ascii")}
-        metadata = {
-            "name": "lyricbridge-validation-receipt",
-            "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
-            "workflow_run": {"id": 42},
-            "expired": True,
-        }
-        with patch.object(github, "json", return_value=metadata):
-            self.assertEqual(github.bootstrap_receipt(SOURCE, proof)["run_id"], "42")
-        # Current reusable workflows use a generic name; historical proof remains valid.
-        with patch.object(
-            github,
-            "json",
-            return_value=dict(metadata, name="plugin-validation-receipt"),
-        ):
-            self.assertEqual(
-                "42",
-                github.bootstrap_receipt(
-                    SOURCE,
-                    proof,
-                    {
-                        "bootstrap_artifacts": [
-                            "lyricbridge-validation-receipt",
-                            "plugin-validation-receipt",
-                        ]
-                    },
-                )["run_id"],
-            )
-            with self.assertRaises(core.VerificationError):
-                github.bootstrap_receipt(
-                    SOURCE,
-                    proof,
-                    {"bootstrap_artifacts": ["lyricbridge-validation-receipt"]},
-                )
-        for broken in (
-            dict(metadata, digest="sha256:" + "0" * 64),
-            dict(metadata, workflow_run={"id": 43}),
-            dict(metadata, name="unverified"),
-        ):
-            with (
-                patch.object(github, "json", return_value=broken),
-                self.assertRaises(core.VerificationError),
-            ):
-                github.bootstrap_receipt(SOURCE, proof)
+            github.attest(SOURCE, POLICY, Path(receipt_file.name))
 
     @patch.dict(sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"})
     def test_commit_identity_rejects_missing_bot_user_id(self):

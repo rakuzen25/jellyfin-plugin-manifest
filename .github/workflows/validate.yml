@@ -32,10 +32,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements-check.txt
-      - name: Install Python check dependencies
-        run: python3 -m pip install -r requirements-check.txt
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.13.4"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked
+      - name: Install pinned GitHub CLI
+        run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v5
         with:
           install: false
@@ -43,9 +47,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check formatting and lint
         run: pnpm check
-      - run: python3 -m unittest discover -s tests -p 'Catalog*.py'
+      - run: pnpm test
+      - name: Validate workflows and Renovate configuration
+        run: uv run --no-sync python scripts/tools.py check-config
       - name: Verify catalog and public release provenance
         env:
           GH_TOKEN: ${{ github.token }}
           CATALOG_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
-        run: python3 scripts/catalog_sync.py validate
+        run: uv run --no-sync python scripts/catalog_sync.py validate

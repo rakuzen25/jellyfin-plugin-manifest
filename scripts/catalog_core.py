@@ -3,7 +3,6 @@
 import base64
 import copy
 import hashlib
-import io
 import json
 import os
 import re
@@ -80,7 +79,7 @@ def required_assets(policy: dict, version: str) -> set[str]:
         "manifest.json",
         "SHA256SUMS",
     }
-    if policy.get("web", True):
+    if policy["web"]:
         names.add(f"{policy['prefix']}-web-{version}.zip")
     return names
 
@@ -152,18 +151,15 @@ class GitHub:
         raise VerificationError("Release tag does not resolve to a commit")
 
     def attest(self, repository: str, policy: dict, receipt: Path) -> None:
-        signer = repository + "/" + policy["attestation_workflow"]
-        signer_options = []
-        if policy.get("toolkit_repository") and receipt.is_file():
-            evidence = json.loads(receipt.read_text())
-            if evidence.get("schema") == 7:
-                revision = self.toolkit_revision(repository, policy, evidence)
-                signer = (
-                    policy["toolkit_repository"]
-                    + "/"
-                    + policy["toolkit_attestation_workflow"]
-                )
-                signer_options = ["--signer-digest", revision]
+        _source_token()
+        evidence = json.loads(receipt.read_text())
+        if evidence.get("schema") != 7:
+            raise VerificationError("Only schema 7 public receipts are supported")
+        revision = self.toolkit_revision(repository, policy, evidence)
+        signer = (
+            policy["toolkit_repository"] + "/" + policy["toolkit_attestation_workflow"]
+        )
+        signer_options = ["--signer-digest", revision]
         result = subprocess.check_output(
             [
                 "gh",
@@ -339,116 +335,23 @@ class GitHub:
         return revision
 
     def receipt(
-        self,
-        repository: str,
-        policy: dict,
-        release: dict,
-        directory: Path,
-        commit: str,
-        bootstrap: dict | None = None,
+        self, repository: str, policy: dict, release: dict, directory: Path, commit: str
     ) -> dict:
-        self.bootstrap_proof = None
-        assets = {asset["name"]: asset for asset in release["assets"]}
+        assets = [
+            asset for asset in release["assets"] if asset["name"] == "validation.json"
+        ]
+        expected = f"https://github.com/{repository}/releases/download/{quote(release['tag_name'], safe='')}/validation.json"
+        if len(assets) != 1 or assets[0]["browser_download_url"] != expected:
+            raise VerificationError(
+                "Release requires one public validation.json receipt at its canonical URL"
+            )
         path = directory / "validation.json"
-        if "validation.json" in assets:
-            expected = f"https://github.com/{repository}/releases/download/{quote(release['tag_name'], safe='')}/validation.json"
-            if assets["validation.json"]["browser_download_url"] != expected:
-                raise VerificationError(
-                    "Receipt URL does not identify the allowed release"
-                )
-            self.download(expected, path, 4 * 1024 * 1024)
-            self.attest(repository, policy, path)
-            return json.loads(path.read_text())
-        if bootstrap is not None:
-            value = self.bootstrap_receipt(repository, bootstrap, policy)
-            self.bootstrap_proof = bootstrap
-            return value
-        for run in self.pages(repository, "/actions/runs", limit=3):
-            if (
-                run.get("path") not in policy["validation_workflows"]
-                or run.get("event") not in {"push", "workflow_dispatch"}
-                or run.get("status") != "completed"
-                or run.get("head_branch") != "main"
-                or run.get("head_repository", {}).get("full_name") != repository
-            ):
-                continue
-            artifacts = self.json(
-                repository, f"/actions/runs/{run['id']}/artifacts?per_page=100"
-            )["artifacts"]
-            for artifact in artifacts:
-                if artifact["name"] not in policy.get(
-                    "bootstrap_artifacts",
-                    [
-                        policy.get(
-                            "bootstrap_artifact", "lyricbridge-validation-receipt"
-                        )
-                    ],
-                ) or artifact.get("expired"):
-                    continue
-                archive = directory / "receipt.zip"
-                self.download(
-                    artifact["archive_download_url"],
-                    archive,
-                    maximum=4 * 1024 * 1024,
-                    authenticated=True,
-                )
-                proof = {
-                    "artifact_id": artifact["id"],
-                    "archive": base64.b64encode(archive.read_bytes()).decode("ascii"),
-                }
-                value = self.bootstrap_receipt(repository, proof, policy)
-                if (
-                    value.get("commit") == commit
-                    and value.get("repository") == repository
-                    and value.get("run_id") == str(run["id"])
-                ):
-                    self.bootstrap_proof = proof
-                    return value
-        raise VerificationError(
-            "No recoverable trusted receipt; waiting for a verified release"
-        )
-
-    def bootstrap_receipt(
-        self, repository: str, proof: dict, policy: dict | None = None
-    ) -> dict:
-        artifact_id = proof.get("artifact_id")
-        encoded = proof.get("archive", "")
-        if (
-            not isinstance(artifact_id, int)
-            or artifact_id < 1
-            or not isinstance(encoded, str)
-            or len(encoded) > 6 * 1024 * 1024
-        ):
-            raise VerificationError("Invalid bootstrap evidence")
-        data = base64.b64decode(encoded, validate=True)
-        metadata = self.json(repository, f"/actions/artifacts/{artifact_id}")
-        allowed = (policy or {}).get(
-            "bootstrap_artifacts",
-            [
-                (policy or {}).get(
-                    "bootstrap_artifact", "lyricbridge-validation-receipt"
-                )
-            ],
-        )
-        if (
-            metadata.get("name") not in allowed
-            or metadata.get("digest") != "sha256:" + hashlib.sha256(data).hexdigest()
-        ):
-            raise VerificationError(
-                "Bootstrap receipt differs from authenticated artifact digest"
-            )
-        with zipfile.ZipFile(io.BytesIO(data)) as zipped:
-            if (
-                zipped.namelist() != ["validation.json"]
-                or zipped.getinfo("validation.json").file_size > 4 * 1024 * 1024
-            ):
-                raise VerificationError("Unexpected bootstrap receipt archive")
-            value = json.loads(zipped.read("validation.json"))
-        if value.get("run_id") != str(metadata.get("workflow_run", {}).get("id")):
-            raise VerificationError(
-                "Bootstrap receipt identifies a different artifact run"
-            )
-        return value
+        self.download(expected, path, 4 * 1024 * 1024)
+        evidence = json.loads(path.read_text())
+        if evidence.get("schema") != 7:
+            raise VerificationError("Only schema 7 public receipts are supported")
+        self.attest(repository, policy, path)
+        return evidence
 
 
 def check_receipt(
@@ -460,11 +363,10 @@ def check_receipt(
     jobs: list[dict],
 ) -> None:
     if (
-        receipt.get("schema")
-        not in policy.get("receipt_schemas", [policy["receipt_schema"]])
+        receipt.get("schema") != 7
         or receipt.get("repository") != repository
         or receipt.get("commit") != commit
-        or not receipt.get("release")
+        or receipt.get("release") is not True
     ):
         raise VerificationError("Receipt schema, repository or release source mismatch")
     if (
@@ -476,8 +378,7 @@ def check_receipt(
         or run.get("path") not in policy["validation_workflows"]
         or run.get("status") != "completed"
         or run.get("conclusion") not in {"success", "failure"}
-        or run.get("head_sha")
-        != receipt.get("run_head_sha", receipt.get("workflow_sha"))
+        or run.get("head_sha") != receipt.get("run_head_sha")
     ):
         raise VerificationError("Untrusted validation execution")
     if any(
@@ -495,7 +396,6 @@ def verify_release(
     repository: str,
     policy: dict,
     release: dict,
-    known: dict | None = None,
 ) -> tuple[dict, dict]:
     if release.get("draft") or release.get("prerelease"):
         raise VerificationError("Only published stable releases are catalogued")
@@ -512,26 +412,18 @@ def verify_release(
     commit = github.tag(repository, tag)
     with tempfile.TemporaryDirectory(prefix="catalog-verify-") as temporary:
         directory = Path(temporary)
-        github.bootstrap_proof = None
-        bootstrap = known.get("bootstrap") if known else None
-        receipt = (
-            github.receipt(repository, policy, release, directory, commit, bootstrap)
-            if bootstrap
-            else github.receipt(repository, policy, release, directory, commit)
-        )
+        receipt = github.receipt(repository, policy, release, directory, commit)
         run_id = receipt.get("run_id", "")
         if not re.fullmatch(r"\d+", str(run_id)):
             raise VerificationError("Invalid receipt run ID")
         run = github.json(repository, f"/actions/runs/{run_id}")
-        attempt = receipt.get("run_attempt", 1)
-        if not isinstance(attempt, int) or attempt < 1:
+        attempt = receipt.get("run_attempt")
+        if type(attempt) is not int or attempt < 1:
             raise VerificationError("Invalid receipt attempt")
         jobs = github.json(
             repository, f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100"
         )["jobs"]
         check_receipt(receipt, repository, commit, policy, run, jobs)
-        if receipt.get("schema") == 7 and github.bootstrap_proof is not None:
-            github.toolkit_revision(repository, policy, receipt)
         hashes = {}
         for asset in release["assets"]:
             if asset["name"] not in expected:
@@ -595,7 +487,6 @@ def verify_release(
             "artifacts": hashes,
             "run_id": run_id,
             "entry": entry,
-            **({"bootstrap": github.bootstrap_proof} if github.bootstrap_proof else {}),
         }
 
 
@@ -696,9 +587,7 @@ def reconcile(
             key = policy["guid"] + "/" + release["tag_name"][1:] + ".0"
             if key in excluded:
                 continue
-            _, record = verify_release(
-                github, repository, policy, release, result.get(key)
-            )
+            _, record = verify_release(github, repository, policy, release)
             record["published_at"] = release["published_at"]
             old = result.get(key)
             if old and any(
@@ -722,9 +611,7 @@ def verify_history(
         if repository not in plugins:
             raise VerificationError("History contains an unapproved repository")
         release = github.json(repository, f"/releases/{record['release_id']}")
-        _, actual = verify_release(
-            github, repository, plugins[repository], release, record
-        )
+        _, actual = verify_release(github, repository, plugins[repository], release)
         if (
             any(
                 record.get(field) != actual[field]

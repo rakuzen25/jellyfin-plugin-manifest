@@ -103,7 +103,7 @@ class ToolkitPolicyTests(unittest.TestCase):
         )
         self.assertIn(
             "example-web-1.0.0.zip",
-            core.required_assets({"prefix": "example"}, "1.0.0"),
+            core.required_assets({"prefix": "example", "web": True}, "1.0.0"),
         )
 
     def test_native_distribution_pair_matches_tagged_uv_lock(self):
@@ -278,28 +278,11 @@ class ToolkitPolicyTests(unittest.TestCase):
                     REVISION, command[command.index("--signer-digest") + 1]
                 )
 
-    def test_schema_seven_bootstrap_verifies_toolkit_before_public_assets(self):
+    def test_missing_attempt_is_rejected_without_defaulting_to_first_run(self):
         github = FakeGitHub()
-        release = github.releases[0]
-        github.receipts[release["tag_name"]].update(ToolkitGitHub().receipt)
-        policy = dict(POLICY, receipt_schemas=[3, 7], toolkit_repository=TOOLKIT)
-        original = github.receipt
-
-        def bootstrap(*args, **kwargs):
-            github.bootstrap_proof = {"artifact_id": 1}
-            return original(*args, **kwargs)
-
-        with (
-            patch.object(github, "receipt", side_effect=bootstrap),
-            patch.object(
-                github,
-                "toolkit_revision",
-                side_effect=core.VerificationError("invalid toolkit"),
-            ) as verify,
-        ):
-            with self.assertRaisesRegex(core.VerificationError, "invalid toolkit"):
-                core.verify_release(github, SOURCE, policy, release)
-            verify.assert_called_once()
+        github.receipts["v0.1.3"].pop("run_attempt")
+        with self.assertRaisesRegex(core.VerificationError, "attempt"):
+            core.verify_release(github, SOURCE, POLICY, github.releases[0])
 
     def test_current_receipt_and_optional_web_profile_pass_public_asset_validation(
         self,
@@ -310,7 +293,7 @@ class ToolkitPolicyTests(unittest.TestCase):
                 release = github.releases[0]
                 receipt = github.receipts[release["tag_name"]]
                 receipt.update(ToolkitGitHub().receipt)
-                policy = dict(POLICY, receipt_schemas=[3, 7], web=web)
+                policy = dict(POLICY, web=web)
                 if not web:
                     name = "lyricbridge-web-0.1.3.zip"
                     release["assets"] = [
@@ -332,14 +315,39 @@ class ToolkitPolicyTests(unittest.TestCase):
                 with self.assertRaisesRegex(core.VerificationError, "schema"):
                     core.verify_release(github, SOURCE, policy, release)
 
-    def test_catalog_policy_accepts_only_historical_and_current_schemas(self):
+    def test_catalog_policy_has_one_explicit_toolkit_contract(self):
         policies = json.loads(
             (Path(__file__).resolve().parents[1] / "plugins.json").read_text()
         )
-        self.assertEqual([3, 7], policies[SOURCE]["receipt_schemas"])
-        self.assertEqual(
-            [7],
-            policies["rakuzen25/jellyfin-plugin-music-metadata-manager"][
-                "receipt_schemas"
-            ],
-        )
+        for policy in policies.values():
+            self.assertEqual(policy["toolkit_repository"], TOOLKIT)
+            self.assertIsInstance(policy["web"], bool)
+            self.assertTrue(policy["groups"])
+            for obsolete in (
+                "receipt_schema",
+                "receipt_schemas",
+                "bootstrap_artifact",
+                "bootstrap_artifacts",
+                "attestation_workflow",
+            ):
+                self.assertNotIn(obsolete, policy)
+
+    def test_old_schemas_and_field_aliases_are_rejected(self):
+        github = FakeGitHub()
+        receipt = github.receipts["v0.1.3"]
+        for schema in (3, 4, 6, 8, None):
+            with self.subTest(schema=schema), self.assertRaises(core.VerificationError):
+                core.check_receipt(
+                    dict(receipt, schema=schema),
+                    SOURCE,
+                    github.commit,
+                    POLICY,
+                    github.run,
+                    github.jobs,
+                )
+        old = dict(receipt, workflow_sha=receipt["run_head_sha"])
+        del old["run_head_sha"]
+        with self.assertRaises(core.VerificationError):
+            core.check_receipt(
+                old, SOURCE, github.commit, POLICY, github.run, github.jobs
+            )
