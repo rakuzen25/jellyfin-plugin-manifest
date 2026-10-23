@@ -6,6 +6,7 @@ import json
 import sys
 import tarfile
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -61,6 +62,27 @@ class ToolTests(unittest.TestCase):
             ):
                 tools.install_gh(destination)
             self.assertFalse(destination.exists())
+
+    def test_runtime_and_workflow_pins_agree(self):
+        package = json.loads((tools.ROOT / "package.json").read_text())
+        self.assertEqual(
+            package["engines"]["node"],
+            (tools.ROOT / ".node-version").read_text().strip(),
+        )
+        self.assertEqual(
+            package["packageManager"], "pnpm@" + package["engines"]["pnpm"]
+        )
+        python = (tools.ROOT / ".python-version").read_text().strip()
+        self.assertEqual(python, "3.15.1")
+        project = tomllib.loads((tools.ROOT / "pyproject.toml").read_text())
+        version = project["tool"]["uv"]["required-version"].removeprefix("==")
+        for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
+            text = workflow.read_text()
+            self.assertIn('version: "' + version + '"', text)
+            self.assertIn("python-version-file: .python-version", text)
+            self.assertIn("uv sync --locked", text)
+            self.assertIn("scripts/tools.py install-gh", text)
+            self.assertNotIn("pip install", text)
 
     def test_actionlint_exception_is_specific_and_tools_have_no_network(self):
         with patch.object(tools.subprocess, "run") as run:
