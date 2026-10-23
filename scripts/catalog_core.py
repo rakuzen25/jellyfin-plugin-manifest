@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -70,6 +71,18 @@ class PublicRedirect(urllib.request.HTTPRedirectHandler):
         if redirected:
             redirected.remove_header("Authorization")
         return redirected
+
+
+def required_assets(policy: dict, version: str) -> set[str]:
+    names = {
+        f"{policy['prefix']}-{version}.zip",
+        f"{policy['prefix']}-source-{version}.zip",
+        "manifest.json",
+        "SHA256SUMS",
+    }
+    if policy.get("web", True):
+        names.add(f"{policy['prefix']}-web-{version}.zip")
+    return names
 
 
 class GitHub:
@@ -139,6 +152,18 @@ class GitHub:
         raise VerificationError("Release tag does not resolve to a commit")
 
     def attest(self, repository: str, policy: dict, receipt: Path) -> None:
+        signer = repository + "/" + policy["attestation_workflow"]
+        signer_options = []
+        if policy.get("toolkit_repository") and receipt.is_file():
+            evidence = json.loads(receipt.read_text())
+            if evidence.get("schema") == 7:
+                revision = self.toolkit_revision(repository, policy, evidence)
+                signer = (
+                    policy["toolkit_repository"]
+                    + "/"
+                    + policy["toolkit_attestation_workflow"]
+                )
+                signer_options = ["--signer-digest", revision]
         result = subprocess.check_output(
             [
                 "gh",
@@ -148,7 +173,8 @@ class GitHub:
                 "--repo",
                 repository,
                 "--signer-workflow",
-                repository + "/" + policy["attestation_workflow"],
+                signer,
+                *signer_options,
                 "--source-ref",
                 "refs/heads/main",
                 "--deny-self-hosted-runners",
@@ -202,6 +228,116 @@ class GitHub:
             "Receipt attestation lacks an approved successful artifact attachment"
         )
 
+    def toolkit_revision(self, repository: str, policy: dict, receipt: dict) -> str:
+        toolkit = receipt.get("toolkit", {})
+        expected_repository = policy.get("toolkit_repository")
+        if (
+            not expected_repository
+            or not isinstance(toolkit, dict)
+            or toolkit.get("distribution") != "jellyfin-plugin-toolkit"
+            or not re.fullmatch(r"\d+\.\d+\.\d+", str(toolkit.get("version", "")))
+            or any(
+                not re.fullmatch(r"[a-f0-9]{64}", str(toolkit.get(key, "")))
+                for key in ("sha256", "python_lock_sha256")
+            )
+        ):
+            raise VerificationError("Receipt lacks an approved pinned toolkit")
+        version = toolkit["version"]
+        tag = "v" + version
+        wheel = f"jellyfin_plugin_toolkit-{version}-py3-none-any.whl"
+        sdist = f"jellyfin_plugin_toolkit-{version}.tar.gz"
+        base = f"https://github.com/{expected_repository}/releases/download/{tag}/"
+        if toolkit.get("source") != base + wheel:
+            raise VerificationError(
+                "Toolkit wheel URL does not identify the approved release"
+            )
+        source = self.json(
+            repository, "/contents/uv.lock?ref=" + quote(receipt["commit"], safe="")
+        )
+        try:
+            payload = base64.b64decode(source["content"])
+            lock = tomllib.loads(payload.decode())
+            entries = [
+                entry
+                for entry in lock.get("package", [])
+                if entry.get("name", "").replace("_", "-") == "jellyfin-plugin-toolkit"
+            ]
+            if (
+                hashlib.sha256(payload).hexdigest() != toolkit["python_lock_sha256"]
+                or len(entries) != 1
+                or entries[0].get("version") != version
+                or entries[0].get("source") != {"url": base + wheel}
+                or [item.get("hash") for item in entries[0].get("wheels", [])]
+                != ["sha256:" + toolkit["sha256"]]
+                or set(toolkit)
+                != {"distribution", "version", "source", "sha256", "python_lock_sha256"}
+            ):
+                raise VerificationError(
+                    "Receipt toolkit differs from the tagged plugin source"
+                )
+        except (KeyError, TypeError, ValueError) as error:
+            raise VerificationError(
+                "Invalid tagged uv.lock toolkit provenance: " + str(error)
+            ) from error
+        release = self.json(expected_repository, "/releases/tags/" + tag)
+        if release.get("draft") is not False or release.get("prerelease") is not False:
+            raise VerificationError("Toolkit must be a published stable release")
+        names = (wheel, sdist, "SHA256SUMS", "build-provenance.json")
+        for name in names:
+            assets = [
+                asset
+                for asset in release.get("assets", [])
+                if asset.get("name") == name
+            ]
+            if len(assets) != 1 or assets[0].get("browser_download_url") != base + name:
+                raise VerificationError(
+                    "Toolkit release asset is missing, ambiguous or has an invalid URL"
+                )
+        revision = self.tag(expected_repository, tag)
+        if not re.fullmatch(r"[a-f0-9]{40}", revision):
+            raise VerificationError("Toolkit tag must resolve to an immutable revision")
+        with tempfile.TemporaryDirectory(prefix="catalog-toolkit-") as temporary:
+            directory = Path(temporary)
+            for name in names:
+                self.download(
+                    base + name,
+                    directory / name,
+                    100 * 1024 * 1024 if name in (wheel, sdist) else 64 * 1024,
+                )
+            hashes = {
+                name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
+                for name in (wheel, sdist)
+            }
+            if hashes[wheel] != toolkit["sha256"]:
+                raise VerificationError("Toolkit wheel differs from the plugin lock")
+            try:
+                listed = {}
+                for line in (directory / "SHA256SUMS").read_text().splitlines():
+                    match = re.fullmatch(r"([a-f0-9]{64})  ([A-Za-z0-9_.-]+)", line)
+                    if not match or match[2] in listed:
+                        raise VerificationError(
+                            "Malformed or duplicate toolkit checksum entry"
+                        )
+                    listed[match[2]] = match[1]
+                if listed != hashes:
+                    raise VerificationError(
+                        "Toolkit distribution checksum inventory mismatch"
+                    )
+                if json.loads((directory / "build-provenance.json").read_text()) != {
+                    "schema": 2,
+                    "version": version,
+                    "revision": revision,
+                    "files": hashes,
+                }:
+                    raise VerificationError(
+                        "Toolkit build provenance differs from its published tag or distributions"
+                    )
+            except (OSError, ValueError) as error:
+                raise VerificationError(
+                    "Invalid toolkit release provenance: " + str(error)
+                ) from error
+        return revision
+
     def receipt(
         self,
         repository: str,
@@ -224,7 +360,7 @@ class GitHub:
             self.attest(repository, policy, path)
             return json.loads(path.read_text())
         if bootstrap is not None:
-            value = self.bootstrap_receipt(repository, bootstrap)
+            value = self.bootstrap_receipt(repository, bootstrap, policy)
             self.bootstrap_proof = bootstrap
             return value
         for run in self.pages(repository, "/actions/runs", limit=3):
@@ -240,9 +376,14 @@ class GitHub:
                 repository, f"/actions/runs/{run['id']}/artifacts?per_page=100"
             )["artifacts"]
             for artifact in artifacts:
-                if artifact["name"] != "lyricbridge-validation-receipt" or artifact.get(
-                    "expired"
-                ):
+                if artifact["name"] not in policy.get(
+                    "bootstrap_artifacts",
+                    [
+                        policy.get(
+                            "bootstrap_artifact", "lyricbridge-validation-receipt"
+                        )
+                    ],
+                ) or artifact.get("expired"):
                     continue
                 archive = directory / "receipt.zip"
                 self.download(
@@ -255,7 +396,7 @@ class GitHub:
                     "artifact_id": artifact["id"],
                     "archive": base64.b64encode(archive.read_bytes()).decode("ascii"),
                 }
-                value = self.bootstrap_receipt(repository, proof)
+                value = self.bootstrap_receipt(repository, proof, policy)
                 if (
                     value.get("commit") == commit
                     and value.get("repository") == repository
@@ -267,7 +408,9 @@ class GitHub:
             "No recoverable trusted receipt; waiting for a verified release"
         )
 
-    def bootstrap_receipt(self, repository: str, proof: dict) -> dict:
+    def bootstrap_receipt(
+        self, repository: str, proof: dict, policy: dict | None = None
+    ) -> dict:
         artifact_id = proof.get("artifact_id")
         encoded = proof.get("archive", "")
         if (
@@ -279,8 +422,16 @@ class GitHub:
             raise VerificationError("Invalid bootstrap evidence")
         data = base64.b64decode(encoded, validate=True)
         metadata = self.json(repository, f"/actions/artifacts/{artifact_id}")
+        allowed = (policy or {}).get(
+            "bootstrap_artifacts",
+            [
+                (policy or {}).get(
+                    "bootstrap_artifact", "lyricbridge-validation-receipt"
+                )
+            ],
+        )
         if (
-            metadata.get("name") != "lyricbridge-validation-receipt"
+            metadata.get("name") not in allowed
             or metadata.get("digest") != "sha256:" + hashlib.sha256(data).hexdigest()
         ):
             raise VerificationError(
@@ -309,7 +460,8 @@ def check_receipt(
     jobs: list[dict],
 ) -> None:
     if (
-        receipt.get("schema") != policy["receipt_schema"]
+        receipt.get("schema")
+        not in policy.get("receipt_schemas", [policy["receipt_schema"]])
         or receipt.get("repository") != repository
         or receipt.get("commit") != commit
         or not receipt.get("release")
@@ -354,13 +506,7 @@ def verify_release(
     names = [a["name"] for a in release["assets"]]
     if len(names) != len(set(names)):
         raise VerificationError("Duplicate release assets")
-    expected = {
-        f"{policy['prefix']}-{version}.zip",
-        f"{policy['prefix']}-web-{version}.zip",
-        f"{policy['prefix']}-source-{version}.zip",
-        "manifest.json",
-        "SHA256SUMS",
-    }
+    expected = required_assets(policy, version)
     if not expected.issubset(names):
         raise VerificationError("Published release is missing required assets")
     commit = github.tag(repository, tag)
@@ -384,6 +530,8 @@ def verify_release(
             repository, f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100"
         )["jobs"]
         check_receipt(receipt, repository, commit, policy, run, jobs)
+        if receipt.get("schema") == 7 and github.bootstrap_proof is not None:
+            github.toolkit_revision(repository, policy, receipt)
         hashes = {}
         for asset in release["assets"]:
             if asset["name"] not in expected:

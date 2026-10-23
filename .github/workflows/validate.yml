@@ -36,10 +36,13 @@ jobs:
           cache-dependency-path: requirements-check.txt
       - name: Install Python check dependencies
         run: python3 -m pip install -r requirements-check.txt
-      - name: Check Python formatting and lint
-        run: |
-          python3 -m ruff format --check scripts tests
-          python3 -m ruff check scripts tests
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v5
+        with:
+          install: false
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - name: Check formatting and lint
+        run: pnpm check
       - run: python3 -m unittest discover -s tests -p 'Catalog*.py'
       - name: Verify catalog and public release provenance
         env:

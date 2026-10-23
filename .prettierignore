@@ -1,0 +1,6 @@
+node_modules/
+.venv/
+pnpm-lock.yaml
+manifest.json
+history.json
+CHANGELOG.md
