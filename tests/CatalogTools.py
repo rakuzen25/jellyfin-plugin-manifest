@@ -78,10 +78,10 @@ class ToolTests(unittest.TestCase):
             "py" + "".join(python.split(".")[:2]),
             project["tool"]["ruff"]["target-version"],
         )
-        version = project["tool"]["uv"]["required-version"].removeprefix("==")
         for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
             text = workflow.read_text()
-            self.assertIn('version: "' + version + '"', text)
+            self.assertIn("astral-sh/setup-uv@", text)
+            self.assertNotIn("          version:", text)
             self.assertIn("python-version-file: .python-version", text)
             self.assertIn("uv sync --locked", text)
             self.assertIn("scripts/tools.py install-gh", text)
@@ -90,13 +90,13 @@ class ToolTests(unittest.TestCase):
     def test_actionlint_exception_is_specific_and_tools_have_no_network(self):
         with patch.object(tools.subprocess, "run") as run:
             tools.check_config()
-        self.assertEqual(run.call_count, 2)
-        actionlint, renovate = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(run.call_count, 3)
+        actionlint, renovate, extraction = [call.args[0] for call in run.call_args_list]
         self.assertEqual(
             actionlint[actionlint.index("-ignore") + 1],
             '^unexpected key "queue" for "concurrency" section\\.',
         )
-        for command in (actionlint, renovate):
+        for command in (actionlint, renovate, extraction):
             self.assertIn("none", command)
             self.assertTrue(any("sha256:" in item for item in command))
         self.assertIn("--strict", renovate)

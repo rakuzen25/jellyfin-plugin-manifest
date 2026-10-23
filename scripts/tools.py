@@ -76,6 +76,23 @@ def check_config():
         check=True,
     )
 
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "node",
+            "-v",
+            f"{ROOT}:/work:ro",
+            pins["renovate"],
+            "/work/tests/renovate.test.mjs",
+        ],
+        check=True,
+    )
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

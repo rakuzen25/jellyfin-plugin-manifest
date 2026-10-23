@@ -143,7 +143,7 @@ Use Conventional Commit messages and PR titles, such as `fix(catalog): verify re
 
 In this checkout, select the Python version in `.python-version`, then install the check tools and run the checks used by `catalog-validate`:
 
-Install Python 3.15.1, uv 0.13.4, Node 26.12.1, pnpm 12.15.0, and Docker. Python is selected through `.python-version`; uv uses the installed interpreter. Restore tools explicitly before checks:
+Install the Python and Node versions declared in `.python-version` and `.node-version`, the pnpm version from `package.json`, the uv version required by `pyproject.toml`, and Docker. uv uses the installed Python interpreter; setup-uv reads its version from the project rather than a second workflow pin. Restore tools explicitly before checks:
 
 ```sh
 uv sync --locked
