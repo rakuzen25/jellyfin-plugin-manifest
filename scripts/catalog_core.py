@@ -2,15 +2,14 @@
 
 import base64
 import copy
-import gzip
 import hashlib
 import io
 import json
 import os
 import re
 import subprocess
-import tarfile
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -157,7 +156,7 @@ class GitHub:
         signer_options = []
         if policy.get("toolkit_repository") and receipt.is_file():
             evidence = json.loads(receipt.read_text())
-            if evidence.get("schema") == 4:
+            if evidence.get("schema") == 7:
                 revision = self.toolkit_revision(repository, policy, evidence)
                 signer = (
                     policy["toolkit_repository"]
@@ -233,72 +232,109 @@ class GitHub:
         toolkit = receipt.get("toolkit", {})
         expected_repository = policy.get("toolkit_repository")
         if (
-            toolkit.get("repository") != expected_repository
-            or toolkit.get("schema") != 1
-            or not re.fullmatch(r"v\d+\.\d+\.\d+", str(toolkit.get("version", "")))
-            or not re.fullmatch(r"[a-f0-9]{64}", str(toolkit.get("sha256", "")))
+            not expected_repository
+            or not isinstance(toolkit, dict)
+            or toolkit.get("distribution") != "jellyfin-plugin-toolkit"
+            or not re.fullmatch(r"\d+\.\d+\.\d+", str(toolkit.get("version", "")))
+            or any(
+                not re.fullmatch(r"[a-f0-9]{64}", str(toolkit.get(key, "")))
+                for key in ("sha256", "python_lock_sha256")
+            )
         ):
             raise VerificationError("Receipt lacks an approved pinned toolkit")
-        source = self.json(
-            repository,
-            "/contents/toolkit.lock.json?ref=" + quote(receipt["commit"], safe=""),
-        )
-        if json.loads(base64.b64decode(source["content"])) != toolkit:
+        version = toolkit["version"]
+        tag = "v" + version
+        wheel = f"jellyfin_plugin_toolkit-{version}-py3-none-any.whl"
+        sdist = f"jellyfin_plugin_toolkit-{version}.tar.gz"
+        base = f"https://github.com/{expected_repository}/releases/download/{tag}/"
+        if toolkit.get("source") != base + wheel:
             raise VerificationError(
-                "Receipt toolkit differs from the tagged plugin source"
+                "Toolkit wheel URL does not identify the approved release"
             )
-        release = self.json(expected_repository, "/releases/tags/" + toolkit["version"])
-        if release.get("draft") or release.get("prerelease"):
+        source = self.json(
+            repository, "/contents/uv.lock?ref=" + quote(receipt["commit"], safe="")
+        )
+        try:
+            payload = base64.b64decode(source["content"])
+            lock = tomllib.loads(payload.decode())
+            entries = [
+                entry
+                for entry in lock.get("package", [])
+                if entry.get("name", "").replace("_", "-") == "jellyfin-plugin-toolkit"
+            ]
+            if (
+                hashlib.sha256(payload).hexdigest() != toolkit["python_lock_sha256"]
+                or len(entries) != 1
+                or entries[0].get("version") != version
+                or entries[0].get("source") != {"url": base + wheel}
+                or [item.get("hash") for item in entries[0].get("wheels", [])]
+                != ["sha256:" + toolkit["sha256"]]
+                or set(toolkit)
+                != {"distribution", "version", "source", "sha256", "python_lock_sha256"}
+            ):
+                raise VerificationError(
+                    "Receipt toolkit differs from the tagged plugin source"
+                )
+        except (KeyError, TypeError, ValueError) as error:
+            raise VerificationError(
+                "Invalid tagged uv.lock toolkit provenance: " + str(error)
+            ) from error
+        release = self.json(expected_repository, "/releases/tags/" + tag)
+        if release.get("draft") is not False or release.get("prerelease") is not False:
             raise VerificationError("Toolkit must be a published stable release")
-        name = "jellyfin-plugin-toolkit-" + toolkit["version"][1:] + ".tar.gz"
-        assets = [a for a in release.get("assets", []) if a.get("name") == name]
-        if len(assets) != 1:
-            raise VerificationError("Toolkit release archive is missing or ambiguous")
-        asset = assets[0]
-        expected_url = f"https://github.com/{expected_repository}/releases/download/{toolkit['version']}/{name}"
-        if asset.get("browser_download_url") != expected_url:
-            raise VerificationError("Toolkit archive URL does not identify its release")
+        names = (wheel, sdist, "SHA256SUMS", "build-provenance.json")
+        for name in names:
+            assets = [
+                asset
+                for asset in release.get("assets", [])
+                if asset.get("name") == name
+            ]
+            if len(assets) != 1 or assets[0].get("browser_download_url") != base + name:
+                raise VerificationError(
+                    "Toolkit release asset is missing, ambiguous or has an invalid URL"
+                )
+        revision = self.tag(expected_repository, tag)
+        if not re.fullmatch(r"[a-f0-9]{40}", revision):
+            raise VerificationError("Toolkit tag must resolve to an immutable revision")
         with tempfile.TemporaryDirectory(prefix="catalog-toolkit-") as temporary:
-            archive = Path(temporary) / name
-            self.download(expected_url, archive, 100 * 1024 * 1024)
-            data = archive.read_bytes()
-            if hashlib.sha256(data).hexdigest() != toolkit["sha256"]:
-                raise VerificationError("Toolkit archive differs from the plugin lock")
-            revision = self.tag(expected_repository, toolkit["version"])
+            directory = Path(temporary)
+            for name in names:
+                self.download(
+                    base + name,
+                    directory / name,
+                    100 * 1024 * 1024 if name in (wheel, sdist) else 64 * 1024,
+                )
+            hashes = {
+                name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
+                for name in (wheel, sdist)
+            }
+            if hashes[wheel] != toolkit["sha256"]:
+                raise VerificationError("Toolkit wheel differs from the plugin lock")
             try:
-                with gzip.GzipFile(fileobj=io.BytesIO(data)) as compressed:
-                    expanded = compressed.read(300 * 1024 * 1024 + 1)
-                if len(expanded) > 300 * 1024 * 1024:
-                    raise VerificationError("Expanded toolkit archive exceeds limit")
-                with tarfile.open(fileobj=io.BytesIO(expanded), mode="r:") as package:
-                    entries = [
-                        entry
-                        for entry in package
-                        if entry.name == "toolkit-release.json"
-                    ]
-                    if (
-                        len(entries) != 1
-                        or not entries[0].isfile()
-                        or entries[0].size > 4096
-                    ):
+                listed = {}
+                for line in (directory / "SHA256SUMS").read_text().splitlines():
+                    match = re.fullmatch(r"([a-f0-9]{64})  ([A-Za-z0-9_.-]+)", line)
+                    if not match or match[2] in listed:
                         raise VerificationError(
-                            "Toolkit source provenance is missing or ambiguous"
+                            "Malformed or duplicate toolkit checksum entry"
                         )
-                    stream = package.extractfile(entries[0])
-                    if stream is None:
-                        raise VerificationError("Toolkit source provenance is missing")
-                    metadata = json.load(stream)
-                if metadata != {
-                    "schema": 1,
-                    "version": toolkit["version"][1:],
+                    listed[match[2]] = match[1]
+                if listed != hashes:
+                    raise VerificationError(
+                        "Toolkit distribution checksum inventory mismatch"
+                    )
+                if json.loads((directory / "build-provenance.json").read_text()) != {
+                    "schema": 2,
+                    "version": version,
                     "revision": revision,
+                    "files": hashes,
                 }:
                     raise VerificationError(
-                        "Toolkit archive revision differs from its published tag"
+                        "Toolkit build provenance differs from its published tag or distributions"
                     )
-            except (OSError, tarfile.TarError, ValueError) as error:
+            except (OSError, ValueError) as error:
                 raise VerificationError(
-                    "Invalid toolkit source provenance: " + str(error)
+                    "Invalid toolkit release provenance: " + str(error)
                 ) from error
         return revision
 
@@ -494,6 +530,8 @@ def verify_release(
             repository, f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100"
         )["jobs"]
         check_receipt(receipt, repository, commit, policy, run, jobs)
+        if receipt.get("schema") == 7 and github.bootstrap_proof is not None:
+            github.toolkit_revision(repository, policy, receipt)
         hashes = {}
         for asset in release["assets"]:
             if asset["name"] not in expected:

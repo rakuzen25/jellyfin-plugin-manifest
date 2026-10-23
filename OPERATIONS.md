@@ -189,4 +189,4 @@ For ongoing changes, use [withdrawal and restoration](#withdraw-or-restore-a-ver
 
 ## Shared toolkit releases
 
-Schema 4 receipts identify the toolkit lock from the tagged plugin source. Verification downloads and hashes the stable toolkit release archive and requires the approved reusable signer workflow at its exact tag commit. Schema 3 LyricBridge history retains its original signer and artifact requirements. Update plugin allowlists and the GitHub App installation when onboarding another repository.
+Schema 7 receipts identify the toolkit wheel and the SHA256 of `uv.lock` from the tagged plugin source. Verification checks the canonical released wheel URL, wheel and source distribution hashes, `SHA256SUMS`, and schema 2 `build-provenance.json` against the toolkit release tag. The approved reusable signer workflow must match that exact tag commit. Bootstrap receipts undergo the same toolkit provenance checks. Schema 3 LyricBridge history retains its original signer and artifact requirements. Update plugin allowlists and the GitHub App installation when onboarding another repository.
