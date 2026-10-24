@@ -145,12 +145,13 @@ class ToolkitPolicyTests(unittest.TestCase):
                     github.verify()
 
     def test_receipt_must_match_exact_lock_bytes_and_dependency(self) -> None:
-        for edit in (
+        cases_edit: tuple[Callable[[bytes], bytes], ...] = (
             lambda data: data.replace(b"0.4.2", b"0.4.1"),
             lambda data: data.replace(b"[[package]]", b"[[different]]"),
             lambda data: data + b"\n[[package]]\n" + data.split(b"[[package]]", 1)[1],
             lambda data: b"not valid TOML!",
-        ):
+        )
+        for edit in cases_edit:
             with self.subTest(edit=edit):
                 github = ToolkitGitHub()
                 github.lock = edit(github.lock)
@@ -185,7 +186,7 @@ class ToolkitPolicyTests(unittest.TestCase):
 
     def test_release_must_be_stable_and_assets_canonical_and_unambiguous(self) -> None:
         mutate: Callable[[dict[str, Any]], object]
-        for mutate in (
+        cases_mutate: tuple[Callable[[dict[str, Any]], object], ...] = (
             lambda release: release.update(draft=True),
             lambda release: release.update(prerelease=True),
             lambda release: release["assets"].pop(),
@@ -193,7 +194,8 @@ class ToolkitPolicyTests(unittest.TestCase):
             lambda release: release["assets"][0].update(
                 browser_download_url="https://attacker.invalid/wheel"
             ),
-        ):
+        )
+        for mutate in cases_mutate:
             github = ToolkitGitHub()
             mutate(github.release)
             with self.assertRaises(core.VerificationError):
@@ -207,12 +209,13 @@ class ToolkitPolicyTests(unittest.TestCase):
                 with self.assertRaises(core.VerificationError):
                     github.verify()
         change: dict[str, Any]
-        for change in (
+        cases_change: tuple[dict[str, Any], ...] = (
             {"revision": "c" * 40},
             {"version": "0.4.1"},
             {"files": {}},
             {"schema": 1},
-        ):
+        )
+        for change in cases_change:
             github = ToolkitGitHub()
             provenance = json.loads(github.files["build-provenance.json"])
             provenance.update(change)

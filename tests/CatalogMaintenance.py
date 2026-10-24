@@ -344,11 +344,12 @@ class MaintenanceTests(unittest.TestCase):
     def test_foreign_branch_protected_changes_and_advancing_main_never_push(
         self,
     ) -> None:
-        for settings in (
+        cases_settings: tuple[dict[str, Any], ...] = (
             {"pending": self.request(), "foreign": True},
             {"pending": self.request(), "extra": True},
             {"advanced": True},
-        ):
+        )
+        for settings in cases_settings:
             calls, error = self.run_mock(**settings)
             self.assertIsInstance(error, core.VerificationError)
             self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))

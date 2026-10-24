@@ -10,15 +10,17 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from json_shapes import is_json_array, is_json_object
+
 
 def validate_catalog(value: object) -> list[dict[str, Any]]:
     # Schema failures are invalid JSON values, including fields of the wrong type.
-    if not isinstance(value, list):
-        raise ValueError("Catalog must be an array")  # noqa: TRY004
+    if not is_json_array(value):
+        raise ValueError("Catalog must be an array")
     guids: set[str] = set()
     for plugin in value:
-        if not isinstance(plugin, dict) or not isinstance(plugin.get("guid"), str):
-            raise ValueError("Invalid plugin entry")  # noqa: TRY004
+        if not is_json_object(plugin) or not isinstance(plugin.get("guid"), str):
+            raise ValueError("Invalid plugin entry")
         try:
             guid = str(uuid.UUID(plugin["guid"]))
         except ValueError as error:
@@ -29,12 +31,12 @@ def validate_catalog(value: object) -> list[dict[str, Any]]:
         if not isinstance(plugin.get("name"), str) or not plugin["name"].strip():
             raise ValueError("Plugin name is required")
         versions = plugin.get("versions")
-        if not isinstance(versions, list) or not versions:
+        if not is_json_array(versions) or not versions:
             raise ValueError("Each plugin needs at least one version")
         seen: set[str] = set()
         for release in versions:
-            if not isinstance(release, dict):
-                raise ValueError("Invalid version entry")  # noqa: TRY004
+            if not is_json_object(release):
+                raise ValueError("Invalid version entry")
             for key in ("version", "targetAbi"):
                 if not isinstance(release.get(key), str) or not re.fullmatch(
                     r"\d+\.\d+\.\d+\.\d+", release[key]

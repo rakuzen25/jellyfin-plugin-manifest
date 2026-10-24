@@ -342,10 +342,11 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(len(self.pushes()), 2)
 
     def test_created_pr_is_rechecked_before_auto_merge(self) -> None:
-        for overrides in (
+        cases_overrides: tuple[dict[str, Any], ...] = (
             {"author": {"login": "other-app[bot]"}},
             {"headRefOid": "0" * 40},
-        ):
+        )
+        for overrides in cases_overrides:
             with self.subTest(overrides=overrides):
                 self.created_override = overrides
                 self.prs = []
@@ -360,11 +361,12 @@ class PublicationGitTests(unittest.TestCase):
         snapshot = self.snapshot()
         base, _, candidate = snapshot
         head = self.push_orphan(base, candidate)
-        for overrides in (
+        cases_overrides2: tuple[dict[str, Any], ...] = (
             {"author": {"login": "other-app[bot]"}},
             {"baseRefName": "other"},
             {"isCrossRepository": True},
-        ):
+        )
+        for overrides in cases_overrides2:
             with self.subTest(overrides=overrides):
                 self.terminal = [self.pr(state="CLOSED", **overrides)]
                 with self.assertRaisesRegex(

@@ -3,7 +3,7 @@
 import unittest
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from CatalogDiscovery import _install_path
+from CatalogDiscovery import install_path
 
 
 class DiscoveryUrlTests(unittest.TestCase):
@@ -11,7 +11,7 @@ class DiscoveryUrlTests(unittest.TestCase):
         guid = "70a9d327-7e98-4201-88a5-724d39366c40"
         for name in ("Fixture Plugin", "Lyric/Bridge & More?#", "歌詞 Plugin"):
             with self.subTest(name=name):
-                parsed = urlsplit(_install_path(name, guid, "0.1.3.0"))
+                parsed = urlsplit(install_path(name, guid, "0.1.3.0"))
                 component = parsed.path.removeprefix("/Packages/Installed/")
                 self.assertNotIn("/", component)
                 self.assertNotIn(" ", component)
@@ -27,7 +27,7 @@ class DiscoveryUrlTests(unittest.TestCase):
 
     def test_simple_plugin_names_keep_the_existing_install_url(self) -> None:
         self.assertEqual(
-            _install_path("LyricBridge", "fixture", "0.1.3.0"),
+            install_path("LyricBridge", "fixture", "0.1.3.0"),
             "/Packages/Installed/LyricBridge?assemblyGuid=fixture&version=0.1.3.0",
         )
 

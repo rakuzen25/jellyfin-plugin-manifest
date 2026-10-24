@@ -18,6 +18,7 @@ from typing import IO, Any, cast
 from urllib.parse import quote, urlparse
 
 from catalog import merge_catalog, validate_catalog
+from json_shapes import is_json_array, is_json_object
 
 REPOSITORY = "rakuzen25/jellyfin-plugin-manifest"
 CANONICAL_VERSION = re.compile(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){3}")
@@ -115,7 +116,7 @@ class GitHub:
     ) -> Iterator[dict[str, Any]]:
         for page in range(1, limit + 1):
             values = self.json(repository, f"{endpoint}?per_page=100&page={page}")
-            values = values if isinstance(values, list) else values["workflow_runs"]
+            values = values if is_json_array(values) else values["workflow_runs"]
             yield from values
             if len(values) < 100:
                 return
@@ -246,7 +247,7 @@ class GitHub:
         expected_repository = policy.get("toolkit_repository")
         if (
             not expected_repository
-            or not isinstance(toolkit, dict)
+            or not is_json_object(toolkit)
             or toolkit.get("distribution") != "jellyfin-plugin-toolkit"
             or not re.fullmatch(r"\d+\.\d+\.\d+", str(toolkit.get("version", "")))
             or any(
@@ -515,7 +516,7 @@ def verify_release(
 def withdrawal_keys(
     withdrawals: list[dict[str, Any]], plugins: dict[str, Any]
 ) -> set[str]:
-    keys = set()
+    keys: set[str] = set()
     guids = {value["guid"] for value in plugins.values()}
     for item in withdrawals:
         version = item.get("version")
@@ -561,9 +562,13 @@ def render(
         for name, value in record["entry"].items():
             if name != "versions":
                 target[name] = copy.deepcopy(value)
+
+    def version_key(version: dict[str, Any]) -> tuple[int, ...]:
+        return tuple(map(int, version["version"].split(".")))
+
     for plugin in result:
         plugin["versions"].sort(
-            key=lambda version: tuple(map(int, version["version"].split("."))),
+            key=version_key,
             reverse=True,
         )
     return sorted(result, key=lambda plugin: plugin["guid"])

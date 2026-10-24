@@ -29,7 +29,7 @@ class QuietFiles(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-def _install_path(name: str, guid: str, version: str) -> str:
+def install_path(name: str, guid: str, version: str) -> str:
     query = urlencode({"assemblyGuid": guid, "version": version})
     return f"/Packages/Installed/{quote(name, safe='')}?{query}"
 
@@ -156,7 +156,7 @@ def discovery(manifest: Path) -> None:
                     raise AssertionError("Catalog name changed during discovery")
                 version = entry["versions"][0]["version"]
                 call(
-                    _install_path(entry["name"], entry["guid"], version),
+                    install_path(entry["name"], entry["guid"], version),
                     "POST",
                     {},
                 )
