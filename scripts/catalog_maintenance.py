@@ -7,6 +7,7 @@ import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from catalog_core import (
     REPOSITORY,
@@ -38,7 +39,7 @@ class Outcome(Enum):
 
 @dataclass(frozen=True)
 class BranchState:
-    pr: dict | None
+    pr: dict[str, Any] | None
     lease: str
 
 
@@ -55,12 +56,12 @@ class Request:
 @dataclass(frozen=True)
 class Proposal:
     outcome: Outcome
-    candidate: dict
+    candidate: dict[str, Any]
     audit: str
 
 
-def maintenance_prs(state: str = "open") -> list[dict]:
-    return json.loads(
+def maintenance_prs(state: str = "open") -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = json.loads(
         command(
             "gh",
             "pr",
@@ -76,8 +77,10 @@ def maintenance_prs(state: str = "open") -> list[dict]:
         )
     )
 
+    return rows
 
-def owned_pr(pr: dict) -> bool:
+
+def owned_pr(pr: dict[str, Any]) -> bool:
     return (
         app_author(pr.get("author", {}))
         and pr.get("baseRefName") == "main"
@@ -121,8 +124,8 @@ def inspect_branch(root: Path) -> BranchState:
 
 
 def pending_state(
-    root: Path, base_sha: str, current: dict, branch: BranchState
-) -> tuple[dict, list[dict], bool]:
+    root: Path, base_sha: str, current: dict[str, Any], branch: BranchState
+) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
     if not branch.pr:
         return current, current["withdrawals.json"], False
     ancestor = command("git", "merge-base", base_sha, branch.lease, cwd=root)
@@ -139,7 +142,11 @@ def pending_state(
 
 
 def plan_request(
-    root: Path, base_sha: str, current: dict, branch: BranchState, request: Request
+    root: Path,
+    base_sha: str,
+    current: dict[str, Any],
+    branch: BranchState,
+    request: Request,
 ) -> Proposal:
     pending, rows, needs_rebase = pending_state(root, base_sha, current, branch)
     candidate = request_change(
@@ -166,14 +173,14 @@ def plan_request(
     return Proposal(outcome, candidate, audit)
 
 
-def merge_request(pr: dict, option: str) -> None:
+def merge_request(pr: dict[str, Any], option: str) -> None:
     args = ["gh", "pr", "merge", str(pr["number"]), "--repo", REPOSITORY, option]
     if option == "--auto":
         args.extend(["--squash", "--subject", TITLE])
     command(*args)
 
 
-def update_body(pr: dict | None, audit: str) -> dict:
+def update_body(pr: dict[str, Any] | None, audit: str) -> dict[str, Any]:
     body = (
         pr["body"]
         if pr
@@ -220,7 +227,11 @@ def update_body(pr: dict | None, audit: str) -> dict:
 
 
 def write_proposal(
-    root: Path, base_sha: str, branch: BranchState, request: Request, candidate: dict
+    root: Path,
+    base_sha: str,
+    branch: BranchState,
+    request: Request,
+    candidate: dict[str, Any],
 ) -> None:
     command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
     for name in FILES:

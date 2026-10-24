@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlencode
 
 IMAGE = "jellyfin/jellyfin@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037"
@@ -58,7 +59,7 @@ def discovery(manifest: Path) -> None:
         token = ""
         password = ""
 
-        def call(path: str, method: str = "GET", body=None):
+        def call(path: str, method: str = "GET", body: Any = None) -> Any:
             authorization = 'MediaBrowser Client="CatalogTests", Device="Disposable", DeviceId="catalog", Version="1"'
             if token:
                 authorization += f', Token="{token}"'
@@ -75,7 +76,7 @@ def discovery(manifest: Path) -> None:
                 data = response.read()
                 return json.loads(data) if data else None
 
-        def ready():
+        def ready() -> None:
             for _ in range(120):
                 try:
                     if (

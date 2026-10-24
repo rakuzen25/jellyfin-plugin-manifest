@@ -11,7 +11,10 @@ import tempfile
 import tomllib
 import urllib.request
 import zipfile
+from collections.abc import Callable, Iterator
+from http.client import HTTPMessage
 from pathlib import Path
+from typing import IO, Any, cast
 from urllib.parse import quote, urlparse
 
 from catalog import merge_catalog, validate_catalog
@@ -32,7 +35,7 @@ class VerificationError(ValueError):
     pass
 
 
-def app_author(author: dict) -> bool:
+def app_author(author: dict[str, Any]) -> bool:
     slug = os.environ["PLUGIN_APP_SLUG"]
     # gh's GraphQL export uses app/<slug>; REST uses <slug>[bot].
     return (author.get("login") == "app/" + slug and author.get("is_bot") is True) or (
@@ -40,7 +43,7 @@ def app_author(author: dict) -> bool:
     )
 
 
-def configure_app_git_author(root: Path, run) -> None:
+def configure_app_git_author(root: Path, run: Callable[..., str]) -> None:
     login = os.environ["PLUGIN_APP_SLUG"] + "[bot]"
     user_id = run("gh", "api", "users/" + login, "--jq", ".id")
     if not re.fullmatch(r"[1-9][0-9]*", user_id):
@@ -63,16 +66,26 @@ def _source_token() -> str:
 
 
 class PublicRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes] | None,
+        code: int,
+        msg: str,
+        headers: HTTPMessage | dict[str, str],
+        newurl: str,
+    ) -> urllib.request.Request | None:
         if urlparse(newurl).scheme != "https":
             raise VerificationError("Download redirect is not HTTPS")
-        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        redirected = super().redirect_request(
+            req, cast(IO[bytes], fp), code, msg, cast(HTTPMessage, headers), newurl
+        )
         if redirected:
             redirected.remove_header("Authorization")
         return redirected
 
 
-def required_assets(policy: dict, version: str) -> set[str]:
+def required_assets(policy: dict[str, Any], version: str) -> set[str]:
     names = {
         f"{policy['prefix']}-{version}.zip",
         f"{policy['prefix']}-source-{version}.zip",
@@ -85,7 +98,7 @@ def required_assets(policy: dict, version: str) -> set[str]:
 
 
 class GitHub:
-    def json(self, repository: str, endpoint: str):
+    def json(self, repository: str, endpoint: str) -> Any:
         request = urllib.request.Request(
             "https://api.github.com/repos/" + repository + endpoint,
             headers={
@@ -97,7 +110,9 @@ class GitHub:
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.load(response)
 
-    def pages(self, repository: str, endpoint: str, limit: int = 10):
+    def pages(
+        self, repository: str, endpoint: str, limit: int = 10
+    ) -> Iterator[dict[str, Any]]:
         for page in range(1, limit + 1):
             values = self.json(repository, f"{endpoint}?per_page=100&page={page}")
             values = values if isinstance(values, list) else values["workflow_runs"]
@@ -114,7 +129,7 @@ class GitHub:
         destination: Path,
         maximum: int = 512 * 1024 * 1024,
         authenticated: bool = False,
-    ):
+    ) -> None:
         parsed = urlparse(url)
         if parsed.scheme != "https" or parsed.hostname not in {
             "github.com",
@@ -144,13 +159,13 @@ class GitHub:
         obj = self.json(repository, "/git/ref/tags/" + quote(tag, safe=""))["object"]
         for _ in range(10):
             if obj["type"] == "commit":
-                return obj["sha"]
+                return str(obj["sha"])
             if obj["type"] != "tag":
                 break
             obj = self.json(repository, "/git/tags/" + obj["sha"])["object"]
         raise VerificationError("Release tag does not resolve to a commit")
 
-    def attest(self, repository: str, policy: dict, receipt: Path) -> None:
+    def attest(self, repository: str, policy: dict[str, Any], receipt: Path) -> None:
         _source_token()
         evidence = json.loads(receipt.read_text())
         if evidence.get("schema") != 7:
@@ -224,7 +239,9 @@ class GitHub:
             "Receipt attestation lacks an approved successful artifact attachment"
         )
 
-    def toolkit_revision(self, repository: str, policy: dict, receipt: dict) -> str:
+    def toolkit_revision(
+        self, repository: str, policy: dict[str, Any], receipt: dict[str, Any]
+    ) -> str:
         toolkit = receipt.get("toolkit", {})
         expected_repository = policy.get("toolkit_repository")
         if (
@@ -307,7 +324,7 @@ class GitHub:
             if hashes[wheel] != toolkit["sha256"]:
                 raise VerificationError("Toolkit wheel differs from the plugin lock")
             try:
-                listed = {}
+                listed: dict[str, Any] = {}
                 for line in (directory / "SHA256SUMS").read_text().splitlines():
                     match = re.fullmatch(r"([a-f0-9]{64})  ([A-Za-z0-9_.-]+)", line)
                     if not match or match[2] in listed:
@@ -335,8 +352,13 @@ class GitHub:
         return revision
 
     def receipt(
-        self, repository: str, policy: dict, release: dict, directory: Path, commit: str
-    ) -> dict:
+        self,
+        repository: str,
+        policy: dict[str, Any],
+        release: dict[str, Any],
+        directory: Path,
+        commit: str,
+    ) -> dict[str, Any]:
         assets = [
             asset for asset in release["assets"] if asset["name"] == "validation.json"
         ]
@@ -347,7 +369,7 @@ class GitHub:
             )
         path = directory / "validation.json"
         self.download(expected, path, 4 * 1024 * 1024)
-        evidence = json.loads(path.read_text())
+        evidence: dict[str, Any] = json.loads(path.read_text())
         if evidence.get("schema") != 7:
             raise VerificationError("Only schema 7 public receipts are supported")
         self.attest(repository, policy, path)
@@ -355,12 +377,12 @@ class GitHub:
 
 
 def check_receipt(
-    receipt: dict,
+    receipt: dict[str, Any],
     repository: str,
     commit: str,
-    policy: dict,
-    run: dict,
-    jobs: list[dict],
+    policy: dict[str, Any],
+    run: dict[str, Any],
+    jobs: list[dict[str, Any]],
 ) -> None:
     if (
         receipt.get("schema") != 7
@@ -394,9 +416,9 @@ def check_receipt(
 def verify_release(
     github: GitHub,
     repository: str,
-    policy: dict,
-    release: dict,
-) -> tuple[dict, dict]:
+    policy: dict[str, Any],
+    release: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if release.get("draft") or release.get("prerelease"):
         raise VerificationError("Only published stable releases are catalogued")
     tag = release["tag_name"]
@@ -424,7 +446,7 @@ def verify_release(
             repository, f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100"
         )["jobs"]
         check_receipt(receipt, repository, commit, policy, run, jobs)
-        hashes = {}
+        hashes: dict[str, Any] = {}
         for asset in release["assets"]:
             if asset["name"] not in expected:
                 continue
@@ -442,7 +464,7 @@ def verify_release(
             hashes[name] = hashlib.sha256((directory / name).read_bytes()).hexdigest()
         if receipt.get("artifacts") != hashes:
             raise VerificationError("Public assets differ from validated artifacts")
-        listed = {}
+        listed: dict[str, Any] = {}
         for line in (directory / "SHA256SUMS").read_text().splitlines():
             match = re.fullmatch(r"([a-f0-9]{64})  ([A-Za-z0-9_.-]+)", line)
             if not match or match[2] in listed:
@@ -490,7 +512,9 @@ def verify_release(
         }
 
 
-def withdrawal_keys(withdrawals: list[dict], plugins: dict) -> set[str]:
+def withdrawal_keys(
+    withdrawals: list[dict[str, Any]], plugins: dict[str, Any]
+) -> set[str]:
     keys = set()
     guids = {value["guid"] for value in plugins.values()}
     for item in withdrawals:
@@ -511,9 +535,11 @@ def withdrawal_keys(withdrawals: list[dict], plugins: dict) -> set[str]:
     return keys
 
 
-def render(history: dict, withdrawals: list[dict], plugins: dict) -> list[dict]:
+def render(
+    history: dict[str, Any], withdrawals: list[dict[str, Any]], plugins: dict[str, Any]
+) -> list[dict[str, Any]]:
     excluded = withdrawal_keys(withdrawals, plugins)
-    result: list[dict] = []
+    result: list[dict[str, Any]] = []
     for key, record in sorted(
         history.items(),
         key=lambda pair: tuple(map(int, pair[0].split("/")[-1].split("."))),
@@ -544,8 +570,11 @@ def render(history: dict, withdrawals: list[dict], plugins: dict) -> list[dict]:
 
 
 def reconcile(
-    github: GitHub, plugins: dict, history: dict, withdrawals: list[dict]
-) -> dict:
+    github: GitHub,
+    plugins: dict[str, Any],
+    history: dict[str, Any],
+    withdrawals: list[dict[str, Any]],
+) -> dict[str, Any]:
     result = copy.deepcopy(history)
     excluded = withdrawal_keys(withdrawals, plugins)
     for repository, policy in plugins.items():
@@ -601,8 +630,11 @@ def reconcile(
 
 
 def verify_history(
-    github: GitHub, plugins: dict, history: dict, withdrawals: list[dict]
-) -> dict:
+    github: GitHub,
+    plugins: dict[str, Any],
+    history: dict[str, Any],
+    withdrawals: list[dict[str, Any]],
+) -> dict[str, Any]:
     excluded = withdrawal_keys(withdrawals, plugins)
     for key, record in history.items():
         if key in excluded:

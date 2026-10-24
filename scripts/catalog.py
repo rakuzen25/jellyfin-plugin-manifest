@@ -7,10 +7,11 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 
-def validate_catalog(value: object) -> list[dict]:
+def validate_catalog(value: object) -> list[dict[str, Any]]:
     # Schema failures are invalid JSON values, including fields of the wrong type.
     if not isinstance(value, list):
         raise ValueError("Catalog must be an array")  # noqa: TRY004
@@ -80,7 +81,7 @@ def validate_catalog(value: object) -> list[dict]:
     return value
 
 
-def merge_catalog(existing: object, incoming: object) -> list[dict]:
+def merge_catalog(existing: object, incoming: object) -> list[dict[str, Any]]:
     result = copy.deepcopy(validate_catalog(existing))
     entries = validate_catalog(incoming)
     for entry in entries:

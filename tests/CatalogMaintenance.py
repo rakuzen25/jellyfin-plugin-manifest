@@ -2,10 +2,12 @@
 
 import copy
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -16,7 +18,7 @@ import catalog_sync as sync
 from CatalogPublication import GUID, POLICY, SOURCE, FakeGitHub
 
 RUN = "https://github.com/" + core.REPOSITORY + "/actions/runs/123"
-ENV = {
+ENV: dict[str, Any] = {
     "GITHUB_REF": "refs/heads/main",
     "GITHUB_EVENT_NAME": "workflow_dispatch",
     "GITHUB_REPOSITORY": core.REPOSITORY,
@@ -28,11 +30,11 @@ ENV = {
 
 
 class MaintenanceTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.github = FakeGitHub()
         self.plugins = {SOURCE: POLICY}
         history = core.reconcile(self.github, self.plugins, {}, [])
-        self.current: dict = {
+        self.current: dict[str, Any] = {
             "plugins.json": self.plugins,
             "history.json": history,
             "withdrawals.json": [],
@@ -41,14 +43,14 @@ class MaintenanceTests(unittest.TestCase):
 
     def request(
         self,
-        state=None,
-        pending=None,
-        operation="Withdraw",
-        version="0.1.3.0",
-        **overrides,
-    ):
+        state: dict[str, Any] | None = None,
+        pending: list[dict[str, Any]] | None = None,
+        operation: str = "Withdraw",
+        version: str = "0.1.3.0",
+        **overrides: Any,
+    ) -> dict[str, Any]:
         state = self.current if state is None else state
-        args = {
+        args: dict[str, Any] = {
             "repository": SOURCE,
             "reason": "Owner decision",
             "actor": "owner",
@@ -64,7 +66,7 @@ class MaintenanceTests(unittest.TestCase):
             **args,
         )
 
-    def test_withdrawal_and_duplicate_are_local_and_preserve_history(self):
+    def test_withdrawal_and_duplicate_are_local_and_preserve_history(self) -> None:
         before = copy.deepcopy(self.current)
         with patch.object(
             policy,
@@ -80,7 +82,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(withdrawn["withdrawals.json"][0]["requestedBy"], "owner")
         self.assertEqual(withdrawn["withdrawals.json"][0]["requestUrl"], RUN)
 
-    def test_restoration_verifies_only_target_and_failure_preserves_input(self):
+    def test_restoration_verifies_only_target_and_failure_preserves_input(self) -> None:
         withdrawn = self.request()
         before = copy.deepcopy(withdrawn)
         restored = self.request(withdrawn, operation="Restore")
@@ -104,13 +106,14 @@ class MaintenanceTests(unittest.TestCase):
             )
             verify.assert_not_called()
 
-    def test_unknown_targets_invalid_versions_and_missing_audit_fail(self):
-        for overrides in (
+    def test_unknown_targets_invalid_versions_and_missing_audit_fail(self) -> None:
+        invalid_overrides: tuple[dict[str, Any], ...] = (
             {"repository": "other/repo"},
             {"reason": " "},
             {"actor": "bad actor"},
             {"run_url": "https://example.invalid/123"},
-        ):
+        )
+        for overrides in invalid_overrides:
             with (
                 self.subTest(overrides=overrides),
                 self.assertRaises(core.VerificationError),
@@ -125,7 +128,7 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_multiple_pending_requests_rebase_and_latest_successful_operation_wins(
         self,
-    ):
+    ) -> None:
         pending = self.request()
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
         latest = copy.deepcopy(self.current)
@@ -153,7 +156,7 @@ class MaintenanceTests(unittest.TestCase):
             )
         self.assertEqual(len(both["withdrawals.json"]), 2)
 
-    def test_newer_main_conflict_and_pending_policy_changes_are_rejected(self):
+    def test_newer_main_conflict_and_pending_policy_changes_are_rejected(self) -> None:
         pending = self.request()
         latest = copy.deepcopy(pending)
         latest["withdrawals.json"][0]["reason"] = "Newer explicit owner decision"
@@ -163,7 +166,7 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(core.VerificationError, "protected"):
             policy.rebase_pending(self.current, self.current, pending)
 
-    def test_gate_rejects_extra_changes_and_unauthorized_manifest_edits(self):
+    def test_gate_rejects_extra_changes_and_unauthorized_manifest_edits(self) -> None:
         withdrawn = self.request()
         self.assertFalse(
             policy.scoped_validation(
@@ -182,14 +185,14 @@ class MaintenanceTests(unittest.TestCase):
 
     def run_mock(
         self,
-        operation="Withdraw",
-        pending=None,
-        foreign=False,
-        advanced=False,
-        extra=False,
-        stale=True,
-        terminal=False,
-    ):
+        operation: str = "Withdraw",
+        pending: dict[str, Any] | None = None,
+        foreign: bool = False,
+        advanced: bool = False,
+        extra: bool = False,
+        stale: bool = True,
+        terminal: bool = False,
+    ) -> tuple[list[Any], Exception | None]:
         base = "a" * 40
         head = "b" * 40
         ancestor = "c" * 40
@@ -212,9 +215,9 @@ class MaintenanceTests(unittest.TestCase):
             ]
         )
         revs = 0
-        self.audit_bodies = []
+        self.audit_bodies: list[str] = []
 
-        def command(*args, **kwargs):
+        def command(*args: str, **kwargs: Any) -> str:
             nonlocal revs
             if "--body-file" in args:
                 self.audit_bodies.append(
@@ -273,12 +276,12 @@ class MaintenanceTests(unittest.TestCase):
                 return "plugins.json" if extra else "manifest.json\nwithdrawals.json"
             return ""
 
-        def load(root, ref=None):
+        def load(root: Path, ref: str | None = None) -> dict[str, Any] | None:
             return copy.deepcopy(pending if ref == head else self.current)
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch.dict(maintenance.os.environ, ENV),
+            patch.dict(os.environ, ENV),
             patch.object(maintenance, "GitHub", return_value=self.github),
             patch.object(maintenance, "load", side_effect=load),
             patch.object(maintenance, "command", side_effect=command) as calls,
@@ -294,7 +297,7 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_git_request_uses_lease_protected_branch_and_automatic_protected_merge(
         self,
-    ):
+    ) -> None:
         calls, error = self.run_mock()
         self.assertIsNone(error)
         arguments = [call.args for call in calls]
@@ -330,7 +333,7 @@ class MaintenanceTests(unittest.TestCase):
             )
         )
 
-    def test_cancelled_out_pending_requests_close_without_a_git_commit(self):
+    def test_cancelled_out_pending_requests_close_without_a_git_commit(self) -> None:
         calls, error = self.run_mock(operation="Restore", pending=self.request())
         self.assertIsNone(error)
         self.assertTrue(any(call.args[:3] == ("gh", "pr", "close") for call in calls))
@@ -338,7 +341,9 @@ class MaintenanceTests(unittest.TestCase):
             any(call.args[:2] in {("git", "commit"), ("git", "push")} for call in calls)
         )
 
-    def test_foreign_branch_protected_changes_and_advancing_main_never_push(self):
+    def test_foreign_branch_protected_changes_and_advancing_main_never_push(
+        self,
+    ) -> None:
         for settings in (
             {"pending": self.request(), "foreign": True},
             {"pending": self.request(), "extra": True},
@@ -348,7 +353,9 @@ class MaintenanceTests(unittest.TestCase):
             self.assertIsInstance(error, core.VerificationError)
             self.assertFalse(any(call.args[:2] == ("git", "push") for call in calls))
 
-    def test_unchanged_pending_retry_resumes_auto_merge_without_another_commit(self):
+    def test_unchanged_pending_retry_resumes_auto_merge_without_another_commit(
+        self,
+    ) -> None:
         calls, error = self.run_mock(pending=self.request(), stale=False)
         self.assertIsNone(error)
         self.assertTrue(
@@ -365,8 +372,14 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIn("Withdraw " + SOURCE + " 0.1.3.0 by @owner", self.audit_bodies[0])
         self.assertIn(RUN, self.audit_bodies[0])
 
-    def test_failed_refresh_disables_auto_merge_before_writing_or_editing_audit(self):
-        pr = {"number": 7, "body": "Previous authorized request", "url": "fixture"}
+    def test_failed_refresh_disables_auto_merge_before_writing_or_editing_audit(
+        self,
+    ) -> None:
+        pr: dict[str, Any] = {
+            "number": 7,
+            "body": "Previous authorized request",
+            "url": "fixture",
+        }
         branch = maintenance.BranchState(pr, "b" * 40)
         request = maintenance.Request(
             "Withdraw", SOURCE, "0.1.3.0", "Owner decision", "owner", RUN
@@ -389,7 +402,9 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIn("--disable-auto", command.call_args.args)
         update.assert_not_called()
 
-    def test_publication_and_maintenance_share_a_preserving_workflow_queue(self):
+    def test_publication_and_maintenance_share_a_preserving_workflow_queue(
+        self,
+    ) -> None:
         root = Path(__file__).resolve().parent.parent
         workflows = root / ".github/workflows"
         for name in ("maintenance.yml", "sync.yml"):
@@ -409,7 +424,7 @@ class MaintenanceTests(unittest.TestCase):
                 },
             )
 
-    def test_completed_app_branch_can_be_reused_but_other_apps_cannot(self):
+    def test_completed_app_branch_can_be_reused_but_other_apps_cannot(self) -> None:
         calls, error = self.run_mock(terminal=True)
         self.assertIsNone(error)
         self.assertTrue(
@@ -425,18 +440,18 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_validate_entrypoint_uses_protected_delta_instead_of_unrelated_network(
         self,
-    ):
+    ) -> None:
         candidate = self.request()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name, value in candidate.items():
                 (root / name).write_text(json.dumps(value))
 
-            def load(path, ref=None):
+            def load(path: Path, ref: str | None = None) -> dict[str, Any] | None:
                 return self.current if ref else candidate
 
             with (
-                patch.dict(sync.os.environ, {"CATALOG_BASE": "a" * 40}),
+                patch.dict(os.environ, {"CATALOG_BASE": "a" * 40}),
                 patch.object(
                     sys, "argv", ["catalog_sync.py", "validate", "--root", directory]
                 ),
@@ -453,11 +468,9 @@ class MaintenanceTests(unittest.TestCase):
                 sync.main()
                 verify.assert_not_called()
 
-    def test_non_main_dispatch_is_rejected_before_git_or_api(self):
+    def test_non_main_dispatch_is_rejected_before_git_or_api(self) -> None:
         with (
-            patch.dict(
-                maintenance.os.environ, dict(ENV, GITHUB_REF="refs/heads/other")
-            ),
+            patch.dict(os.environ, dict(ENV, GITHUB_REF="refs/heads/other")),
             patch.object(maintenance, "command") as command,
             self.assertRaises(core.VerificationError),
         ):

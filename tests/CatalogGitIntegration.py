@@ -1,11 +1,15 @@
 """Publication lifecycle checks with real Git and a disposable bare remote."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -16,7 +20,7 @@ from CatalogPublication import POLICY, SOURCE, FakeGitHub
 
 
 class PublicationGitTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="catalog-git-")
         self.addCleanup(self.temporary.cleanup)
         directory = Path(self.temporary.name)
@@ -30,7 +34,7 @@ class PublicationGitTests(unittest.TestCase):
         self.git("config", "commit.gpgsign", "false")
         self.git("config", "core.hooksPath", str(directory / "no-hooks"))
         self.git("remote", "add", "origin", str(self.remote))
-        initial = {
+        initial: dict[str, Any] = {
             "plugins.json": {SOURCE: POLICY},
             "history.json": {},
             "manifest.json": [],
@@ -41,26 +45,26 @@ class PublicationGitTests(unittest.TestCase):
         self.commit("Initial protected catalog")
         self.git("push", "-u", "origin", "main")
         self.github = FakeGitHub()
-        self.prs = []
-        self.terminal = []
-        self.calls = []
+        self.prs: list[dict[str, Any]] = []
+        self.terminal: list[dict[str, Any]] = []
+        self.calls: list[tuple[str, ...]] = []
         self.fail_create = False
         self.fail_auto = False
-        self.created_override = {}
-        self.before_command = None
+        self.created_override: dict[str, Any] = {}
+        self.before_command: Callable[[tuple[str, ...]], None] | None = None
         self.environment = patch.dict(
-            sync.os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}
+            os.environ, {"PLUGIN_APP_SLUG": "test-catalog-app"}
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
         self.commands = patch.object(sync, "command", side_effect=self.command)
         self.commands.start()
         self.addCleanup(self.commands.stop)
-        sleeps = patch.object(sync.time, "sleep")
+        sleeps = patch.object(time, "sleep")
         sleeps.start()
         self.addCleanup(sleeps.stop)
 
-    def git(self, *args):
+    def git(self, *args: str) -> str:
         return subprocess.run(
             ["git", *args],
             cwd=self.root,
@@ -69,21 +73,21 @@ class PublicationGitTests(unittest.TestCase):
             capture_output=True,
         ).stdout.strip()
 
-    def write(self, values):
+    def write(self, values: dict[str, Any]) -> None:
         for name, value in values.items():
             (self.root / name).write_text(json.dumps(value, indent=4) + "\n")
 
-    def commit(self, message):
+    def commit(self, message: str) -> str:
         self.git("add", ".")
         self.git("commit", "-m", message)
         return self.git("rev-parse", "HEAD")
 
-    def head(self):
+    def head(self) -> str:
         remote = self.git("ls-remote", "--heads", "origin", sync.BRANCH)
         return remote.split()[0] if remote else ""
 
-    def pr(self, head=None, **overrides):
-        result = {
+    def pr(self, head: str | None = None, **overrides: Any) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "number": 7,
             "author": {"login": "app/test-catalog-app", "is_bot": True},
             "baseRefName": "main",
@@ -94,7 +98,7 @@ class PublicationGitTests(unittest.TestCase):
         result.update(overrides)
         return result
 
-    def command(self, *args, **kwargs):
+    def command(self, *args: str, **kwargs: Any) -> str:
         self.calls.append(args)
         if self.before_command:
             self.before_command(args)
@@ -126,7 +130,7 @@ class PublicationGitTests(unittest.TestCase):
             return ""
         raise AssertionError(args)
 
-    def snapshot(self):
+    def snapshot(self) -> tuple[str, dict[str, Any], dict[str, Any]]:
         self.git("fetch", "origin", "main")
         base = self.git("rev-parse", "origin/main")
         state = policy.load(self.root, base)
@@ -136,7 +140,7 @@ class PublicationGitTests(unittest.TestCase):
             state["history.json"],
             state["withdrawals.json"],
         )
-        candidate = {
+        candidate: dict[str, Any] = {
             "history.json": history,
             "manifest.json": core.render(
                 history, state["withdrawals.json"], state["plugins.json"]
@@ -144,10 +148,17 @@ class PublicationGitTests(unittest.TestCase):
         }
         return base, {name: state[name] for name in sync.FILES}, candidate
 
-    def publish(self, snapshot=None):
+    def publish(
+        self, snapshot: tuple[str, dict[str, Any], dict[str, Any]] | None = None
+    ) -> None:
         sync.publish_pr(self.root, *(snapshot or self.snapshot()))
 
-    def push_orphan(self, base, candidate, alter=None):
+    def push_orphan(
+        self,
+        base: str,
+        candidate: dict[str, Any],
+        alter: Callable[[], None] | None = None,
+    ) -> str:
         self.git("checkout", "-B", sync.BRANCH, base)
         self.write(candidate)
         if alter:
@@ -156,7 +167,7 @@ class PublicationGitTests(unittest.TestCase):
         self.git("push", "--force", "origin", sync.BRANCH)
         return head
 
-    def advance_main(self, base, candidate=None):
+    def advance_main(self, base: str, candidate: dict[str, Any] | None = None) -> str:
         self.git("checkout", "-B", "main", base)
         if candidate:
             self.write(candidate)
@@ -166,10 +177,10 @@ class PublicationGitTests(unittest.TestCase):
         self.git("push", "origin", "main")
         return head
 
-    def pushes(self):
+    def pushes(self) -> list[tuple[str, ...]]:
         return [args for args in self.calls if args[:2] == ("git", "push")]
 
-    def test_initial_publication_is_a_protected_pr_with_an_empty_lease(self):
+    def test_initial_publication_is_a_protected_pr_with_an_empty_lease(self) -> None:
         base, before, candidate = self.snapshot()
         self.publish((base, before, candidate))
         self.assertEqual(
@@ -189,7 +200,9 @@ class PublicationGitTests(unittest.TestCase):
         self.assertIn("--auto", self.calls[-1])
         self.assertFalse(any("--disable-auto" in args for args in self.calls))
 
-    def test_retained_merged_and_closed_app_branches_are_reused_with_exact_leases(self):
+    def test_retained_merged_and_closed_app_branches_are_reused_with_exact_leases(
+        self,
+    ) -> None:
         self.publish()
         for state in ("MERGED", "CLOSED"):
             with self.subTest(state=state):
@@ -215,7 +228,9 @@ class PublicationGitTests(unittest.TestCase):
                 )
                 self.assertEqual(len(self.prs), 1)
 
-    def test_failed_pr_creation_recovers_the_exact_branch_without_another_push(self):
+    def test_failed_pr_creation_recovers_the_exact_branch_without_another_push(
+        self,
+    ) -> None:
         self.fail_create = True
         with self.assertRaises(subprocess.CalledProcessError):
             self.publish()
@@ -228,7 +243,7 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(len(self.pushes()), 1)
         self.assertEqual(self.prs[0]["headRefOid"], orphan)
 
-    def test_orphan_mismatches_and_non_catalog_changes_are_never_adopted(self):
+    def test_orphan_mismatches_and_non_catalog_changes_are_never_adopted(self) -> None:
         snapshot = self.snapshot()
         base, _, candidate = snapshot
         for kind in (
@@ -241,7 +256,7 @@ class PublicationGitTests(unittest.TestCase):
         ):
             with self.subTest(kind=kind):
 
-                def alter(kind=kind):
+                def alter(kind: str = kind) -> None:
                     manifest = self.root / "manifest.json"
                     if kind == "content":
                         self.write({"manifest.json": []})
@@ -267,7 +282,9 @@ class PublicationGitTests(unittest.TestCase):
                 self.assertEqual(self.pushes(), [])
                 self.git("checkout", "main")
 
-    def test_stale_orphan_ancestry_is_rejected_even_when_catalog_content_matches(self):
+    def test_stale_orphan_ancestry_is_rejected_even_when_catalog_content_matches(
+        self,
+    ) -> None:
         base, _, candidate = self.snapshot()
         orphan = self.push_orphan(base, candidate)
         self.advance_main(base)
@@ -279,7 +296,9 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(self.pushes(), [])
         self.assertEqual(self.prs, [])
 
-    def test_invalid_open_pr_metadata_and_multiple_prs_stop_before_pushing(self):
+    def test_invalid_open_pr_metadata_and_multiple_prs_stop_before_pushing(
+        self,
+    ) -> None:
         snapshot = self.snapshot()
         base, _, candidate = snapshot
         head = self.push_orphan(base, candidate)
@@ -299,14 +318,14 @@ class PublicationGitTests(unittest.TestCase):
                 self.assertEqual(self.pushes(), [])
                 self.assertFalse(any("--auto" in args for args in self.calls))
 
-    def test_publication_waits_for_pr_head_after_push(self):
+    def test_publication_waits_for_pr_head_after_push(self) -> None:
         self.publish()
         previous = self.head()
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
         reads = 0
         original = sync.publication_prs
 
-        def delayed_prs(state="open"):
+        def delayed_prs(state: str = "open") -> list[dict[str, Any]]:
             nonlocal reads
             prs = original(state)
             if self.head() != previous:
@@ -322,7 +341,7 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(self.calls[-1][-1], self.head())
         self.assertEqual(len(self.pushes()), 2)
 
-    def test_created_pr_is_rechecked_before_auto_merge(self):
+    def test_created_pr_is_rechecked_before_auto_merge(self) -> None:
         for overrides in (
             {"author": {"login": "other-app[bot]"}},
             {"headRefOid": "0" * 40},
@@ -335,7 +354,9 @@ class PublicationGitTests(unittest.TestCase):
                     self.publish()
                 self.assertFalse(any("--auto" in args for args in self.calls))
 
-    def test_terminal_foreign_pr_cannot_be_adopted_even_with_matching_content(self):
+    def test_terminal_foreign_pr_cannot_be_adopted_even_with_matching_content(
+        self,
+    ) -> None:
         snapshot = self.snapshot()
         base, _, candidate = snapshot
         head = self.push_orphan(base, candidate)
@@ -354,13 +375,13 @@ class PublicationGitTests(unittest.TestCase):
                 self.assertEqual(self.pushes(), [])
                 self.assertEqual(self.prs, [])
 
-    def test_remote_branch_movement_is_rejected_by_the_real_git_lease(self):
+    def test_remote_branch_movement_is_rejected_by_the_real_git_lease(self) -> None:
         self.publish()
         original = self.head()
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
         raced = None
 
-        def race(args):
+        def race(args: tuple[str, ...]) -> None:
             nonlocal raced
             if args[:2] == ("git", "push"):
                 self.before_command = None
@@ -385,7 +406,7 @@ class PublicationGitTests(unittest.TestCase):
         self.assertTrue(any("--disable-auto" in args for args in self.calls))
         self.assertFalse(any("--auto" in args for args in self.calls))
 
-    def test_main_advancement_stops_both_push_and_orphan_adoption(self):
+    def test_main_advancement_stops_both_push_and_orphan_adoption(self) -> None:
         for orphan in (False, True):
             with self.subTest(orphan=orphan):
                 snapshot = self.snapshot()
@@ -393,7 +414,7 @@ class PublicationGitTests(unittest.TestCase):
                 head = self.push_orphan(base, candidate) if orphan else ""
                 advanced = False
 
-                def race(args, base=base):
+                def race(args: tuple[str, ...], base: str = base) -> None:
                     nonlocal advanced
                     if args[:4] == ("git", "fetch", "origin", "main") and not advanced:
                         advanced = True
@@ -412,7 +433,9 @@ class PublicationGitTests(unittest.TestCase):
                 self.commit("Reset fixture description")
                 self.git("push", "origin", "main")
 
-    def test_branch_movement_during_fetch_and_orphan_adoption_stops_recovery(self):
+    def test_branch_movement_during_fetch_and_orphan_adoption_stops_recovery(
+        self,
+    ) -> None:
         snapshot = self.snapshot()
         base, _, candidate = snapshot
         orphan = self.push_orphan(base, candidate)
@@ -427,7 +450,7 @@ class PublicationGitTests(unittest.TestCase):
                 observed = 0
                 raced = None
 
-                def race(args, moment=moment):
+                def race(args: tuple[str, ...], moment: str = moment) -> None:
                     nonlocal observed, raced
                     if args[:2] == ("git", "ls-remote"):
                         observed += 1
@@ -459,7 +482,7 @@ class PublicationGitTests(unittest.TestCase):
 
     def test_failed_refresh_stays_disabled_and_matching_retry_resumes_without_push(
         self,
-    ):
+    ) -> None:
         self.publish()
         self.github.add("0.1.4", "2026-10-15T00:00:00Z", 2)
         self.fail_auto = True
@@ -476,12 +499,12 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(self.pushes(), [])
         self.assertIn("--auto", self.calls[-1])
 
-    def test_head_guard_rejects_a_change_after_final_pr_inspection(self):
+    def test_head_guard_rejects_a_change_after_final_pr_inspection(self) -> None:
         self.publish()
         original = self.head()
         raced = None
 
-        def race(args):
+        def race(args: tuple[str, ...]) -> None:
             nonlocal raced
             if args[:3] == ("gh", "pr", "merge") and "--auto" in args:
                 self.before_command = None
@@ -501,7 +524,7 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(self.pushes(), [])
         self.assertEqual(self.calls[-1][-2:], ("--match-head-commit", original))
 
-    def test_sync_reads_protected_snapshot_instead_of_local_catalog_edits(self):
+    def test_sync_reads_protected_snapshot_instead_of_local_catalog_edits(self) -> None:
         snapshot = self.snapshot()
         self.write({"plugins.json": {}, "history.json": {"untrusted": True}})
         with (
@@ -515,7 +538,7 @@ class PublicationGitTests(unittest.TestCase):
             sync.main()
         self.assertEqual(publish.call_args.args, (self.root, *snapshot))
 
-    def test_offline_withdraw_can_regenerate_a_missing_manifest(self):
+    def test_offline_withdraw_can_regenerate_a_missing_manifest(self) -> None:
         (self.root / "manifest.json").unlink()
         with patch.object(
             sys, "argv", ["catalog_sync.py", "withdraw", "--root", str(self.root)]
@@ -524,7 +547,9 @@ class PublicationGitTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "manifest.json").read_text()), [])
         self.assertEqual(self.calls, [])
 
-    def test_offline_withdraw_rejects_aliases_without_overwriting_the_manifest(self):
+    def test_offline_withdraw_rejects_aliases_without_overwriting_the_manifest(
+        self,
+    ) -> None:
         _, _, candidate = self.snapshot()
         self.write(candidate)
         self.write(

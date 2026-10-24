@@ -5,7 +5,10 @@ requires-python = ">=3.15,<3.16"
 dependencies = []
 
 [dependency-groups]
-dev = ["ruff==0.17.2"]
+dev = [
+    "mypy>=2.4,<3",
+    "ruff==0.17.2",
+]
 
 [tool.uv]
 package = false
@@ -15,3 +18,8 @@ python-preference = "only-system"
 [tool.ruff]
 target-version = "py315"
 include = ["scripts/**/*.py", "tests/**/*.py"]
+
+[tool.mypy]
+python_version = "3.15"
+files = ["scripts", "tests"]
+strict = true

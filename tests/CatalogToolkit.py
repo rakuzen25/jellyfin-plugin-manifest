@@ -3,10 +3,14 @@
 import base64
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -22,7 +26,7 @@ BASE = f"https://github.com/{TOOLKIT}/releases/download/v{VERSION}/"
 
 
 class ToolkitGitHub(core.GitHub):
-    def __init__(self):
+    def __init__(self) -> None:
         self.files = {WHEEL: b"native wheel", SDIST: b"native source"}
         hashes = {
             name: hashlib.sha256(data).hexdigest() for name, data in self.files.items()
@@ -43,7 +47,7 @@ class ToolkitGitHub(core.GitHub):
             f'version = "{VERSION}"\nsource = {{ url = "{BASE + WHEEL}" }}\n'
             f'wheels = [{{ hash = "sha256:{hashes[WHEEL]}" }}]\n'
         ).encode()
-        self.receipt = {
+        self.validation_receipt: dict[str, Any] = {
             "schema": 7,
             "commit": "a" * 40,
             "toolkit": {
@@ -54,8 +58,8 @@ class ToolkitGitHub(core.GitHub):
                 "python_lock_sha256": hashlib.sha256(self.lock).hexdigest(),
             },
         }
-        self.policy = {"toolkit_repository": TOOLKIT}
-        self.release = {
+        self.policy: dict[str, Any] = {"toolkit_repository": TOOLKIT}
+        self.release: dict[str, Any] = {
             "draft": False,
             "prerelease": False,
             "assets": [
@@ -64,34 +68,36 @@ class ToolkitGitHub(core.GitHub):
             ],
         }
         self.revision = REVISION
-        self.requests = []
+        self.requests: list[tuple[str, str]] = []
 
-    def json(self, repository, endpoint):
+    def json(self, repository: str, endpoint: str) -> Any:
         self.requests.append((repository, endpoint))
         if repository == SOURCE:
-            if endpoint != "/contents/uv.lock?ref=" + self.receipt["commit"]:
+            if endpoint != "/contents/uv.lock?ref=" + self.validation_receipt["commit"]:
                 raise AssertionError(endpoint)
             return {"content": base64.b64encode(self.lock).decode()}
         if (repository, endpoint) != (TOOLKIT, "/releases/tags/v" + VERSION):
             raise AssertionError((repository, endpoint))
         return self.release
 
-    def download(self, url, destination, maximum=0, authenticated=False):
+    def download(
+        self, url: str, destination: Path, maximum: int = 0, authenticated: bool = False
+    ) -> None:
         if not url.startswith(BASE):
             raise AssertionError(url)
         destination.write_bytes(self.files[url.removeprefix(BASE)])
 
-    def tag(self, repository, tag):
+    def tag(self, repository: str, tag: str) -> str:
         if (repository, tag) != (TOOLKIT, "v" + VERSION):
             raise AssertionError((repository, tag))
         return self.revision
 
-    def verify(self):
-        return self.toolkit_revision(SOURCE, self.policy, self.receipt)
+    def verify(self) -> str:
+        return self.toolkit_revision(SOURCE, self.policy, self.validation_receipt)
 
 
 class ToolkitPolicyTests(unittest.TestCase):
-    def test_administrator_only_plugins_do_not_require_web_archive(self):
+    def test_administrator_only_plugins_do_not_require_web_archive(self) -> None:
         self.assertEqual(
             {
                 "example-1.0.0.zip",
@@ -106,12 +112,12 @@ class ToolkitPolicyTests(unittest.TestCase):
             core.required_assets({"prefix": "example", "web": True}, "1.0.0"),
         )
 
-    def test_native_distribution_pair_matches_tagged_uv_lock(self):
+    def test_native_distribution_pair_matches_tagged_uv_lock(self) -> None:
         github = ToolkitGitHub()
         self.assertEqual(REVISION, github.verify())
         self.assertIn((SOURCE, "/contents/uv.lock?ref=" + "a" * 40), github.requests)
 
-    def test_unapproved_and_local_wheel_sources_are_rejected(self):
+    def test_unapproved_and_local_wheel_sources_are_rejected(self) -> None:
         for source in (
             "https://attacker.invalid/toolkit.whl",
             ".build/toolkit-dist/" + WHEEL,
@@ -119,12 +125,12 @@ class ToolkitPolicyTests(unittest.TestCase):
         ):
             with self.subTest(source=source):
                 github = ToolkitGitHub()
-                github.receipt["toolkit"]["source"] = source
+                github.validation_receipt["toolkit"]["source"] = source
                 with self.assertRaisesRegex(core.VerificationError, "approved release"):
                     github.verify()
                 self.assertEqual([], github.requests)
 
-    def test_missing_or_old_toolkit_identity_is_rejected(self):
+    def test_missing_or_old_toolkit_identity_is_rejected(self) -> None:
         for toolkit in (
             None,
             {},
@@ -132,13 +138,13 @@ class ToolkitPolicyTests(unittest.TestCase):
         ):
             with self.subTest(toolkit=toolkit):
                 github = ToolkitGitHub()
-                github.receipt["toolkit"] = toolkit
+                github.validation_receipt["toolkit"] = toolkit
                 with self.assertRaisesRegex(
                     core.VerificationError, "approved pinned toolkit"
                 ):
                     github.verify()
 
-    def test_receipt_must_match_exact_lock_bytes_and_dependency(self):
+    def test_receipt_must_match_exact_lock_bytes_and_dependency(self) -> None:
         for edit in (
             lambda data: data.replace(b"0.4.2", b"0.4.1"),
             lambda data: data.replace(b"[[package]]", b"[[different]]"),
@@ -149,9 +155,9 @@ class ToolkitPolicyTests(unittest.TestCase):
                 github = ToolkitGitHub()
                 github.lock = edit(github.lock)
                 # Exercise dependency validation independently of whole-file hash checks.
-                github.receipt["toolkit"]["python_lock_sha256"] = hashlib.sha256(
-                    github.lock
-                ).hexdigest()
+                github.validation_receipt["toolkit"]["python_lock_sha256"] = (
+                    hashlib.sha256(github.lock).hexdigest()
+                )
                 with self.assertRaises(core.VerificationError):
                     github.verify()
         github = ToolkitGitHub()
@@ -159,22 +165,26 @@ class ToolkitPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(core.VerificationError, "tagged plugin source"):
             github.verify()
 
-    def test_lock_source_and_wheel_hash_cannot_differ_from_receipt(self):
+    def test_lock_source_and_wheel_hash_cannot_differ_from_receipt(self) -> None:
         for old, new in (
             (BASE.encode(), b"https://attacker.invalid/"),
             (b"url = ", b"path = "),
-            (ToolkitGitHub().receipt["toolkit"]["sha256"].encode(), b"0" * 64),
+            (
+                ToolkitGitHub().validation_receipt["toolkit"]["sha256"].encode(),
+                b"0" * 64,
+            ),
         ):
             with self.subTest(new=new):
                 github = ToolkitGitHub()
                 github.lock = github.lock.replace(old, new)
-                github.receipt["toolkit"]["python_lock_sha256"] = hashlib.sha256(
-                    github.lock
-                ).hexdigest()
+                github.validation_receipt["toolkit"]["python_lock_sha256"] = (
+                    hashlib.sha256(github.lock).hexdigest()
+                )
                 with self.assertRaises(core.VerificationError):
                     github.verify()
 
-    def test_release_must_be_stable_and_assets_canonical_and_unambiguous(self):
+    def test_release_must_be_stable_and_assets_canonical_and_unambiguous(self) -> None:
+        mutate: Callable[[dict[str, Any]], object]
         for mutate in (
             lambda release: release.update(draft=True),
             lambda release: release.update(prerelease=True),
@@ -189,13 +199,14 @@ class ToolkitPolicyTests(unittest.TestCase):
             with self.assertRaises(core.VerificationError):
                 github.verify()
 
-    def test_tampered_distributions_checksums_and_provenance_are_rejected(self):
+    def test_tampered_distributions_checksums_and_provenance_are_rejected(self) -> None:
         for name in (WHEEL, SDIST, "SHA256SUMS", "build-provenance.json"):
             with self.subTest(name=name):
                 github = ToolkitGitHub()
                 github.files[name] += b"tampered"
                 with self.assertRaises(core.VerificationError):
                     github.verify()
+        change: dict[str, Any]
         for change in (
             {"revision": "c" * 40},
             {"version": "0.4.1"},
@@ -211,7 +222,7 @@ class ToolkitPolicyTests(unittest.TestCase):
             ):
                 github.verify()
 
-    def test_moved_tag_and_duplicate_checksums_are_rejected(self):
+    def test_moved_tag_and_duplicate_checksums_are_rejected(self) -> None:
         github = ToolkitGitHub()
         github.revision = "c" * 40
         with self.assertRaisesRegex(core.VerificationError, "published tag"):
@@ -223,7 +234,7 @@ class ToolkitPolicyTests(unittest.TestCase):
         ):
             github.verify()
 
-    def test_schema_seven_attestation_pins_the_toolkit_signer_commit(self):
+    def test_schema_seven_attestation_pins_the_toolkit_signer_commit(self) -> None:
         github = ToolkitGitHub()
         policy = dict(
             POLICY,
@@ -245,11 +256,11 @@ class ToolkitPolicyTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as folder:
             receipt = Path(folder) / "validation.json"
-            receipt.write_text(json.dumps(github.receipt))
+            receipt.write_text(json.dumps(github.validation_receipt))
             with (
-                patch.dict(core.os.environ, {"SOURCE_GH_TOKEN": "fixture"}),
+                patch.dict(os.environ, {"SOURCE_GH_TOKEN": "fixture"}),
                 patch.object(
-                    core.subprocess, "check_output", return_value=json.dumps(output)
+                    subprocess, "check_output", return_value=json.dumps(output)
                 ) as verify,
                 patch.object(
                     github, "toolkit_revision", return_value=REVISION
@@ -268,7 +279,9 @@ class ToolkitPolicyTests(unittest.TestCase):
                 ),
             ):
                 github.attest(SOURCE, policy, receipt)
-                pinned.assert_called_once_with(SOURCE, policy, github.receipt)
+                pinned.assert_called_once_with(
+                    SOURCE, policy, github.validation_receipt
+                )
                 command = verify.call_args.args[0]
                 self.assertEqual(
                     TOOLKIT + "/.github/workflows/release.yml",
@@ -278,7 +291,7 @@ class ToolkitPolicyTests(unittest.TestCase):
                     REVISION, command[command.index("--signer-digest") + 1]
                 )
 
-    def test_missing_attempt_is_rejected_without_defaulting_to_first_run(self):
+    def test_missing_attempt_is_rejected_without_defaulting_to_first_run(self) -> None:
         github = FakeGitHub()
         github.receipts["v0.1.3"].pop("run_attempt")
         with self.assertRaisesRegex(core.VerificationError, "attempt"):
@@ -286,13 +299,13 @@ class ToolkitPolicyTests(unittest.TestCase):
 
     def test_current_receipt_and_optional_web_profile_pass_public_asset_validation(
         self,
-    ):
+    ) -> None:
         for web in (False, True):
             with self.subTest(web=web):
                 github = FakeGitHub()
                 release = github.releases[0]
                 receipt = github.receipts[release["tag_name"]]
-                receipt.update(ToolkitGitHub().receipt)
+                receipt.update(ToolkitGitHub().validation_receipt)
                 policy = dict(POLICY, web=web)
                 if not web:
                     name = "lyricbridge-web-0.1.3.zip"
@@ -315,7 +328,7 @@ class ToolkitPolicyTests(unittest.TestCase):
                 with self.assertRaisesRegex(core.VerificationError, "schema"):
                     core.verify_release(github, SOURCE, policy, release)
 
-    def test_catalog_policy_has_one_explicit_toolkit_contract(self):
+    def test_catalog_policy_has_one_explicit_toolkit_contract(self) -> None:
         policies = json.loads(
             (Path(__file__).resolve().parents[1] / "plugins.json").read_text()
         )
@@ -332,7 +345,7 @@ class ToolkitPolicyTests(unittest.TestCase):
             ):
                 self.assertNotIn(obsolete, policy)
 
-    def test_old_schemas_and_field_aliases_are_rejected(self):
+    def test_old_schemas_and_field_aliases_are_rejected(self) -> None:
         github = FakeGitHub()
         receipt = github.receipts["v0.1.3"]
         for schema in (3, 4, 6, 8, None):

@@ -1,11 +1,14 @@
 """Offline GitHub authentication, redirect and download boundary regressions."""
 
 import io
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
 import urllib.request
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -13,7 +16,9 @@ import catalog_core as core
 
 
 class TransportTests(unittest.TestCase):
-    def test_api_accepts_source_only_token_and_prefers_it_to_catalog_token(self):
+    def test_api_accepts_source_only_token_and_prefers_it_to_catalog_token(
+        self,
+    ) -> None:
         for environment, expected in (
             ({"SOURCE_GH_TOKEN": "fixture-source"}, "fixture-source"),
             (
@@ -25,9 +30,9 @@ class TransportTests(unittest.TestCase):
         ):
             with (
                 self.subTest(environment=list(environment)),
-                patch.dict(core.os.environ, environment, clear=True),
+                patch.dict(os.environ, environment, clear=True),
                 patch.object(
-                    core.urllib.request,
+                    urllib.request,
                     "urlopen",
                     return_value=io.BytesIO(b'{"id": 42}'),
                 ) as opened,
@@ -44,11 +49,13 @@ class TransportTests(unittest.TestCase):
                     request.get_header("Authorization"), "Bearer " + expected
                 )
 
-    def test_missing_tokens_fail_before_opening_network_or_attestation_process(self):
+    def test_missing_tokens_fail_before_opening_network_or_attestation_process(
+        self,
+    ) -> None:
         with (
-            patch.dict(core.os.environ, {}, clear=True),
-            patch.object(core.urllib.request, "urlopen") as opened,
-            patch.object(core.subprocess, "check_output") as process,
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(urllib.request, "urlopen") as opened,
+            patch.object(subprocess, "check_output") as process,
         ):
             with self.assertRaisesRegex(core.VerificationError, "token is required"):
                 core.GitHub().json("fixture/source", "/releases")
@@ -63,17 +70,17 @@ class TransportTests(unittest.TestCase):
 
     def test_authenticated_download_uses_source_token_and_public_download_needs_none(
         self,
-    ):
+    ) -> None:
         for authenticated in (True, False):
             with (
                 self.subTest(authenticated=authenticated),
                 tempfile.TemporaryDirectory() as temporary,
                 patch.dict(
-                    core.os.environ,
+                    os.environ,
                     {"SOURCE_GH_TOKEN": "fixture-source"} if authenticated else {},
                     clear=True,
                 ),
-                patch.object(core.urllib.request, "build_opener") as factory,
+                patch.object(urllib.request, "build_opener") as factory,
             ):
                 opener = factory.return_value
                 opener.open.return_value = io.BytesIO(b"fixture")
@@ -90,12 +97,12 @@ class TransportTests(unittest.TestCase):
                     header, "Bearer fixture-source" if authenticated else None
                 )
 
-    def test_download_limit_accepts_exact_size_and_rejects_one_extra_byte(self):
+    def test_download_limit_accepts_exact_size_and_rejects_one_extra_byte(self) -> None:
         for data in (b"abcd", b"abcde"):
             with (
                 self.subTest(size=len(data)),
                 tempfile.TemporaryDirectory() as temporary,
-                patch.object(core.urllib.request, "build_opener") as factory,
+                patch.object(urllib.request, "build_opener") as factory,
             ):
                 factory.return_value.open.return_value = io.BytesIO(data)
                 destination = Path(temporary) / "asset.zip"
@@ -111,8 +118,8 @@ class TransportTests(unittest.TestCase):
                         )
                     self.assertLessEqual(destination.stat().st_size, 4)
 
-    def test_unapproved_download_origins_are_rejected_before_http(self):
-        with patch.object(core.urllib.request, "build_opener") as factory:
+    def test_unapproved_download_origins_are_rejected_before_http(self) -> None:
+        with patch.object(urllib.request, "build_opener") as factory:
             for url in (
                 "http://github.com/fixture",
                 "https://example.invalid/fixture",
@@ -122,7 +129,7 @@ class TransportTests(unittest.TestCase):
                     core.GitHub().download(url, Path("unused.zip"))
         factory.assert_not_called()
 
-    def test_redirect_rejects_http_and_strips_authorization_from_https(self):
+    def test_redirect_rejects_http_and_strips_authorization_from_https(self) -> None:
         handler = core.PublicRedirect()
         request = urllib.request.Request(
             "https://api.github.com/fixture",
@@ -136,6 +143,7 @@ class TransportTests(unittest.TestCase):
             {},
             "https://release-assets.githubusercontent.com/fixture",
         )
+        assert redirected is not None
         self.assertEqual(
             redirected.full_url, "https://release-assets.githubusercontent.com/fixture"
         )
@@ -145,13 +153,13 @@ class TransportTests(unittest.TestCase):
                 request, None, 302, "Found", {}, "http://example.invalid/fixture"
             )
 
-    def test_pagination_collects_full_pages_and_stops_at_a_short_page(self):
+    def test_pagination_collects_full_pages_and_stops_at_a_short_page(self) -> None:
         github = core.GitHub()
         first = [{"id": number} for number in range(100)]
         last = [{"id": 100}]
         for wrapped in (False, True):
             with self.subTest(wrapped=wrapped):
-                pages = [first, last]
+                pages: list[Any] = [first, last]
                 if wrapped:
                     pages = [{"workflow_runs": page} for page in pages]
                 with patch.object(github, "json", side_effect=pages):
@@ -159,7 +167,7 @@ class TransportTests(unittest.TestCase):
                         list(github.pages("fixture/source", "/releases")), first + last
                     )
 
-    def test_pagination_limit_refuses_an_incomplete_release_inventory(self):
+    def test_pagination_limit_refuses_an_incomplete_release_inventory(self) -> None:
         github = core.GitHub()
         with (
             patch.object(
@@ -169,7 +177,9 @@ class TransportTests(unittest.TestCase):
         ):
             list(github.pages("fixture/source", "/releases", limit=1))
 
-    def test_annotated_tags_resolve_to_the_source_commit_with_an_encoded_ref(self):
+    def test_annotated_tags_resolve_to_the_source_commit_with_an_encoded_ref(
+        self,
+    ) -> None:
         github = core.GitHub()
         commit = "a" * 40
         with patch.object(
@@ -186,7 +196,7 @@ class TransportTests(unittest.TestCase):
         )
         self.assertEqual(api.call_args_list[1].args[1], "/git/tags/" + "b" * 40)
 
-    def test_tags_that_cannot_resolve_to_commits_fail_with_bounded_lookup(self):
+    def test_tags_that_cannot_resolve_to_commits_fail_with_bounded_lookup(self) -> None:
         github = core.GitHub()
         for object_type in ("tree", "tag"):
             with (

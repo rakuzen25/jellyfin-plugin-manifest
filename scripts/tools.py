@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def install_gh(destination):
+def install_gh(destination: Path) -> None:
     version = json.loads((ROOT / "toolchain.json").read_text())["gh"]
     name = f"gh_{version}_linux_amd64.tar.gz"
     base = f"https://github.com/cli/cli/releases/download/v{version}/"
@@ -39,7 +39,7 @@ def install_gh(destination):
             output.write(str(destination.resolve()) + "\n")
 
 
-def check_config():
+def check_config() -> None:
     pins = json.loads((ROOT / "toolchain.json").read_text())
     subprocess.run(
         [
@@ -94,7 +94,7 @@ def check_config():
     )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["install-gh", "check-config"])
     parser.add_argument("--directory", type=Path)
