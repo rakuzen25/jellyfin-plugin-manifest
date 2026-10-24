@@ -4,6 +4,7 @@ import copy
 import sys
 import unittest
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from catalog import merge_catalog, validate_catalog
@@ -11,7 +12,7 @@ from catalog import merge_catalog, validate_catalog
 FIXTURE_GUID = "11111111-1111-4111-8111-111111111111"
 
 
-def entry(guid: str, version: str = "0.1.0.0") -> dict:
+def entry(guid: str, version: str = "0.1.0.0") -> dict[str, Any]:
     return {
         "guid": guid,
         "name": "Fixture",
@@ -30,7 +31,7 @@ def entry(guid: str, version: str = "0.1.0.0") -> dict:
 
 
 class CatalogTests(unittest.TestCase):
-    def test_independent_plugins_and_versions_are_preserved(self):
+    def test_independent_plugins_and_versions_are_preserved(self) -> None:
         plugin = entry(FIXTURE_GUID)
         other = entry("6d10e04d-ff20-41b6-ace7-1b408d180fde")
         existing = [plugin, other]
@@ -44,7 +45,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len(merged[0]["versions"]), 2)
         self.assertEqual(merge_catalog(merged, [incoming]), merged)
 
-    def test_existing_version_preserves_unknown_metadata(self):
+    def test_existing_version_preserves_unknown_metadata(self) -> None:
         plugin = entry(FIXTURE_GUID)
         incoming = copy.deepcopy(plugin)
         incoming["versions"][0].pop("unknown")
@@ -54,14 +55,14 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(merged[0]["versions"][0]["newMetadata"], {"future": True})
         self.assertEqual(plugin["versions"][0]["unknown"], [1, 2])
 
-    def test_conflicting_version_is_rejected(self):
+    def test_conflicting_version_is_rejected(self) -> None:
         plugin = entry(FIXTURE_GUID)
         incoming = copy.deepcopy(plugin)
         incoming["versions"][0]["checksum"] = "b" * 32
         with self.assertRaisesRegex(ValueError, "Conflicting"):
             merge_catalog([plugin], [incoming])
 
-    def test_invalid_catalogs_are_rejected(self):
+    def test_invalid_catalogs_are_rejected(self) -> None:
         plugin = entry(FIXTURE_GUID)
         invalid = [[plugin, copy.deepcopy(plugin)]]
         duplicate = copy.deepcopy(plugin)

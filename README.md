@@ -12,4 +12,4 @@ Daily reconciliation catches missed release notifications and retains older cata
 
 Maintainers: see [operating instructions](OPERATIONS.md) for setup and onboarding, [local checks](OPERATIONS.md#test-the-catalog), or [withdrawal and restoration](OPERATIONS.md#withdraw-or-restore-a-version-from-actions).
 
-Install the pinned Python and JavaScript tools with `uv sync --locked` and `pnpm install --frozen-lockfile`. Run `pnpm check` for formatting and lint, `pnpm test` for offline tests, and `pnpm format` to apply formatting. See [local checks](OPERATIONS.md#test-the-catalog) for workflow validation and the pinned GitHub verifier.
+Install the pinned Python and JavaScript tools with `uv sync --locked` and `pnpm install --frozen-lockfile`. Run `pnpm check` for formatting, lint, and strict Python type checking, `pnpm test` for offline tests, and `pnpm format` to apply formatting. See [local checks](OPERATIONS.md#test-the-catalog) for workflow validation and the pinned GitHub verifier.

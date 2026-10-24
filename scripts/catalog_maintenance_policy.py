@@ -4,6 +4,7 @@ import copy
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from catalog_core import (
     CANONICAL_VERSION,
@@ -19,11 +20,11 @@ from catalog_core import (
 FILES = {"withdrawals.json", "manifest.json"}
 
 
-def mapping(rows: list[dict]) -> dict[str, dict]:
+def mapping(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {row["guid"] + "/" + row["version"]: row for row in rows}
 
 
-def load(root: Path, ref: str | None = None) -> dict:
+def load(root: Path, ref: str | None = None) -> dict[str, Any]:
     return {
         name: json.loads(
             command("git", "show", ref + ":" + name, cwd=root)
@@ -40,7 +41,7 @@ def load(root: Path, ref: str | None = None) -> dict:
 
 
 def scoped_validation(
-    github: GitHub, base: dict, candidate: dict, changed: set[str]
+    github: GitHub, base: dict[str, Any], candidate: dict[str, Any], changed: set[str]
 ) -> bool:
     """Only proven maintenance deltas get a narrow gate; additions remain full."""
     if not changed or not changed.issubset(FILES):
@@ -67,7 +68,9 @@ def scoped_validation(
     return True
 
 
-def rebase_pending(current: dict, branch_base: dict, pending: dict) -> list[dict]:
+def rebase_pending(
+    current: dict[str, Any], branch_base: dict[str, Any], pending: dict[str, Any]
+) -> list[dict[str, Any]]:
     if (
         branch_base["history.json"] != pending["history.json"]
         or branch_base["plugins.json"] != pending["plugins.json"]
@@ -101,15 +104,15 @@ def rebase_pending(current: dict, branch_base: dict, pending: dict) -> list[dict
 
 def request_change(
     github: GitHub,
-    current: dict,
-    pending_rows: list[dict],
+    current: dict[str, Any],
+    pending_rows: list[dict[str, Any]],
     operation: str,
     repository: str,
     version: str,
     reason: str,
     actor: str,
     run_url: str,
-) -> dict:
+) -> dict[str, Any]:
     if (
         operation not in {"Withdraw", "Restore"}
         or repository not in current["plugins.json"]

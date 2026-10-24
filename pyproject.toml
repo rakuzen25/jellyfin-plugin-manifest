@@ -5,13 +5,41 @@ requires-python = ">=3.15,<3.16"
 dependencies = []
 
 [dependency-groups]
-dev = ["ruff==0.17.2"]
+dev = [
+    "basedpyright>=1.40.2,<2",
+    "jellyfin-plugin-toolkit",
+    "mypy>=2.4,<3",
+    "ruff==0.17.2",
+]
 
 [tool.uv]
 package = false
 required-version = "==0.13.5"
 python-preference = "only-system"
 
+[tool.uv.sources]
+jellyfin-plugin-toolkit = { url = "https://github.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v0.4.3/jellyfin_plugin_toolkit-0.4.3-py3-none-any.whl" }
+
 [tool.ruff]
+extend = ".build/jpt/configs/ruff.toml"
 target-version = "py315"
 include = ["scripts/**/*.py", "tests/**/*.py"]
+
+[tool.mypy]
+python_version = "3.15"
+files = ["scripts", "tests"]
+strict = true
+
+[tool.basedpyright]
+extends = ".build/jpt/configs/basedpyright.toml"
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.15"
+include = ["scripts", "tests"]
+extraPaths = ["scripts", "tests"]
+
+[tool.jpt.quality]
+checks = ["python", "javascript", "docs", "workflows", "renovate"]
+toolchain_file = "toolchain.json"
+# The pinned actionlint predates GitHub's concurrency queue key.
+workflow_ignores = ['^unexpected key "queue" for "concurrency" section\.']

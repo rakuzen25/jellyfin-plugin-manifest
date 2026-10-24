@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 from catalog_core import (
     REPOSITORY,
@@ -86,7 +87,7 @@ def problem_issue(message: str | None) -> None:
             command("gh", "issue", "close", str(issue["number"]), "--repo", REPOSITORY)
 
 
-def owned_pr(pr: dict) -> bool:
+def owned_pr(pr: dict[str, Any]) -> bool:
     return (
         app_author(pr.get("author", {}))
         and pr.get("baseRefName") == "main"
@@ -94,8 +95,8 @@ def owned_pr(pr: dict) -> bool:
     )
 
 
-def publication_prs(state: str = "open") -> list[dict]:
-    return json.loads(
+def publication_prs(state: str = "open") -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = json.loads(
         command(
             "gh",
             "pr",
@@ -111,8 +112,10 @@ def publication_prs(state: str = "open") -> list[dict]:
         )
     )
 
+    return rows
 
-def open_publication_pr() -> dict | None:
+
+def open_publication_pr() -> dict[str, Any] | None:
     prs = publication_prs()
     if len(prs) > 1 or prs and not owned_pr(prs[0]):
         raise VerificationError(
@@ -139,7 +142,9 @@ def publication_head(root: Path) -> str:
     return head
 
 
-def matches_candidate(root: Path, base_sha: str, head: str, candidate: dict) -> bool:
+def matches_candidate(
+    root: Path, base_sha: str, head: str, candidate: dict[str, Any]
+) -> bool:
     try:
         ancestor = command("git", "merge-base", base_sha, head, cwd=root)
     except subprocess.CalledProcessError as error:
@@ -176,7 +181,7 @@ def require_current_main(root: Path, base_sha: str) -> None:
         )
 
 
-def merge_publication(pr: dict, option: str) -> None:
+def merge_publication(pr: dict[str, Any], option: str) -> None:
     args = ["gh", "pr", "merge", str(pr["number"]), "--repo", REPOSITORY, option]
     if option == "--auto":
         args.extend(
@@ -185,7 +190,9 @@ def merge_publication(pr: dict, option: str) -> None:
     command(*args)
 
 
-def write_publication(root: Path, base_sha: str, candidate: dict, lease: str) -> str:
+def write_publication(
+    root: Path, base_sha: str, candidate: dict[str, Any], lease: str
+) -> str:
     if command("git", "status", "--porcelain", "--untracked-files=no", cwd=root):
         raise VerificationError("Publication requires a clean tracked working tree")
     command("git", "checkout", "-B", BRANCH, base_sha, cwd=root)
@@ -211,7 +218,9 @@ def write_publication(root: Path, base_sha: str, candidate: dict, lease: str) ->
     return head
 
 
-def publish_pr(root: Path, base_sha: str, before: dict, candidate: dict) -> None:
+def publish_pr(
+    root: Path, base_sha: str, before: dict[str, Any], candidate: dict[str, Any]
+) -> None:
     if before == candidate:
         return
     pr = open_publication_pr()
@@ -334,7 +343,10 @@ def main() -> None:
         else:
             assert base_sha is not None
             # Publication writes only after verification and branch inspection.
-            candidate = {"history.json": verified, "manifest.json": manifest}
+            candidate: dict[str, Any] = {
+                "history.json": verified,
+                "manifest.json": manifest,
+            }
             before = {name: state[name] for name in FILES}
             publish_pr(root, base_sha, before, candidate)
             problem_issue(None)

@@ -24,5 +24,8 @@ for (const pin of [pins.actionlint, pins.renovate]) {
     assert.equal(dep.currentValue, version);
     assert.equal(dep.currentDigest, digest);
 }
-assert.equal(dependencies.length, 4);
+const toolkit = dependencies.find((dep) => dep.depName === "rakuzen25/jellyfin-plugin-toolkit");
+assert.ok(project.includes("/releases/download/v" + toolkit.currentValue + "/"));
+assert.equal(toolkit.datasource, "github-releases");
+assert.equal(dependencies.length, 5);
 console.log("PASS: Renovate tracks GitHub CLI, uv, Actionlint and its own pinned image");

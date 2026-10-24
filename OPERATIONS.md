@@ -150,7 +150,9 @@ uv sync --locked
 pnpm install --frozen-lockfile
 pnpm check
 pnpm test
-uv run --no-sync python scripts/tools.py check-config
+uv run --no-sync jpt prepare
+pnpm check
+uv run --no-sync python scripts/tools.py test-renovate
 ```
 
 Use `pnpm format` to apply formatting. The configuration check uses pinned Docker images and has no network access. GitHub CLI is pinned in `toolchain.json`; install the verified Linux AMD64 binary before live verification:
@@ -160,7 +162,7 @@ uv run --no-sync python scripts/tools.py install-gh --directory /tmp/catalog-too
 export PATH="/tmp/catalog-tools:$PATH"
 ```
 
-Renovate inherits the versioned shared tooling preset. Routine patch and minor updates can automerge after required checks and a one-day release delay. Major updates, runtime/compiler/package-manager minor upgrades, and changes to the shared preset require review. Package-specific policy remains local. The catalog does not install the toolkit package.
+Renovate inherits the versioned shared tooling preset. Routine patch and minor updates can automerge after required checks and a one-day release delay. Major updates, runtime/compiler/package-manager minor upgrades, and changes to the shared preset require review. Package-specific policy remains local. The catalog installs the pinned toolkit wheel only as a development dependency for shared checks and configuration. Scheduled catalog synchronization and release verification use `uv sync --locked --no-dev` and retain their independent verifier. Toolkit updates use the existing trusted binding synchronization workflow; its App installation needs workflow-write permission when synchronizing workflow pins.
 
 The suite uses deterministic GitHub fixtures and disposable local Git repositories to test merging, release policy, maintenance, and publication. It needs Git but no GitHub credentials or remote writes, and removes temporary repositories afterward. Confirm that it exits successfully with `OK`.
 

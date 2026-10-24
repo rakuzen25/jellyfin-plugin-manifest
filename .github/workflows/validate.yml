@@ -44,11 +44,20 @@ jobs:
           install: false
           node-version-file: .node-version
       - run: pnpm install --frozen-lockfile
+      - run: uv run --no-sync jpt prepare
       - name: Check formatting and lint
         run: pnpm check
       - run: pnpm test
+      - name: Audit dependency advisories
+        run: uv run --no-sync jpt test advisories
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: manifest-advisories
+          path: dist/evidence/advisories.json
+          if-no-files-found: warn
       - name: Validate workflows and Renovate configuration
-        run: uv run --no-sync python scripts/tools.py check-config
+        run: uv run --no-sync python scripts/tools.py test-renovate
       - name: Verify catalog and public release provenance
         env:
           GH_TOKEN: ${{ github.token }}
