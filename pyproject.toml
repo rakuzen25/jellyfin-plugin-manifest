@@ -18,7 +18,7 @@ required-version = "==0.13.4"
 python-preference = "only-system"
 
 [tool.uv.sources]
-jellyfin-plugin-toolkit = { url = "https://github.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v0.4.3/jellyfin_plugin_toolkit-0.4.3-py3-none-any.whl" }
+jellyfin-plugin-toolkit = { url = "https://github.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v0.5.1/jellyfin_plugin_toolkit-0.5.1-py3-none-any.whl" }
 
 [tool.ruff]
 extend = ".build/jpt/configs/ruff.toml"

@@ -49,7 +49,7 @@ jobs:
           name: manifest-advisories
           path: dist/evidence/advisories.json
           if-no-files-found: warn
-      - name: Validate workflows and Renovate configuration
+      - name: Test Renovate dependency extraction
         run: uv run --no-sync python scripts/tools.py test-renovate
       - name: Verify catalog and public release provenance
         env:

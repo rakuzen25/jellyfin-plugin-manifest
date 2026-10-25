@@ -1,0 +1,9 @@
+name: Check PR title
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+jobs:
+  title:
+    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/pr-title.yml@5b40ac2f5d56620a30ddadeed23da8bd9df2bc72 # v0.5.1
