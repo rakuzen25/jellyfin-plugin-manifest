@@ -4,7 +4,7 @@ Use this guide to configure publication, manage versions, and recover failed upd
 
 ## Work on the catalog
 
-Clone the repository, then select the Python version in [`.python-version`](.python-version) before running scripts or tests:
+Clone the repository and install the exact uv version required by `pyproject.toml`. uv installs the managed Python version in [`.python-version`](.python-version) when synchronizing:
 
 ```sh
 git clone https://github.com/rakuzen25/jellyfin-plugin-manifest.git
@@ -141,7 +141,7 @@ Other naming conventions or receipt policies require a reviewed adapter, without
 
 Use Conventional Commit messages and PR titles, such as `fix(catalog): verify release metadata`, `chore(deps): update tooling`, or `docs: clarify setup`. A separate shared CI check validates PR titles; title/body edits do not rerun catalog validation, while base-branch retargeting does. PR titles are used as the squash commit title when merging. Automated catalog commits and squash merges use `chore(catalog): ...`; Renovate uses `chore(deps): ...`.
 
-Install the Python and Node versions declared in `.python-version` and `.node-version`, the pnpm version from `package.json`, the uv version required by `pyproject.toml`, and Docker. uv uses the installed Python interpreter; setup-uv reads its version from the project rather than a second workflow pin. Restore tools explicitly before checks:
+Install the Node version declared in `.node-version`, the pnpm version from `package.json`, the exact uv version required by `pyproject.toml`, and Docker. uv installs and selects the managed interpreter pinned in `.python-version`; system interpreters are not used. CI uses setup-uv and locked synchronization with the same native pins. Restore tools explicitly before checks:
 
 ```sh
 uv sync --locked
@@ -159,7 +159,7 @@ uv run --no-sync python scripts/tools.py install-gh --directory /tmp/catalog-too
 export PATH="/tmp/catalog-tools:$PATH"
 ```
 
-Renovate inherits the versioned shared tooling preset. Routine patch and minor updates can automerge after required checks and a one-day release delay. Major updates, runtime/compiler/package-manager minor upgrades, and changes to the shared preset require review. Package-specific policy remains local. The catalog installs the pinned toolkit wheel only as a development dependency for shared checks and configuration. Scheduled catalog synchronization and release verification use `uv sync --locked --no-dev` and retain their independent verifier. Toolkit updates use the existing trusted binding synchronization workflow; its App installation needs workflow-write permission when synchronizing workflow pins. After configuring the App, dispatch **Set up connected GitHub App** on the default branch and merge its reviewed identity/Renovate configuration PR. Setup is manual-only; dispatch it again when changing App identity. Credential rotation for the same App only requires retrying the affected operation. Missing setup is a notice in ordinary CI, but blocks binding writes with a setup-workflow link. Malformed ownership records or inconsistent Renovate entries fail static automation checks and must be repaired. Catalog runtime and release verification remain independent of the ownership record and toolkit Python tooling.
+Renovate inherits the versioned shared tooling preset. Routine patch and minor updates can automerge after required checks and a one-day release delay. Major updates, runtime/compiler/package-manager minor upgrades, and changes to the shared preset require review. Python and uv updates share a dedicated **Python toolchain** PR, separate from routine dependencies. A mixed group requires review if any update requires review. Each repository owns its tested pins; if uv cannot install the selected Python version, update to a compatible Python/uv pair and retry locked synchronization. Package-specific policy remains local. The catalog installs the pinned toolkit wheel only as a development dependency for shared checks and configuration. Scheduled catalog synchronization and release verification use `uv sync --locked --no-dev` and retain their independent verifier. Toolkit updates use the existing trusted binding synchronization workflow; its App installation needs workflow-write permission when synchronizing workflow pins. After configuring the App, dispatch **Set up connected GitHub App** on the default branch and merge its reviewed identity/Renovate configuration PR. Setup is manual-only; dispatch it again when changing App identity. Credential rotation for the same App only requires retrying the affected operation. Missing setup is a notice in ordinary CI, but blocks binding writes with a setup-workflow link. Malformed ownership records or inconsistent Renovate entries fail static automation checks and must be repaired. Catalog runtime and release verification remain independent of the ownership record and toolkit Python tooling.
 
 The suite uses deterministic GitHub fixtures and disposable local Git repositories to test merging, release policy, maintenance, and publication. It needs Git but no GitHub credentials or remote writes, and removes temporary repositories afterward. Confirm that it exits successfully with `OK`.
 

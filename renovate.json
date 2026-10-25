@@ -51,15 +51,6 @@
         {
             "customType": "regex",
             "managerFilePatterns": ["/^pyproject\\.toml$/"],
-            "matchStrings": ["required-version = \"==(?<currentValue>[^\"]+)\""],
-            "depNameTemplate": "uv",
-            "packageNameTemplate": "astral-sh/uv",
-            "datasourceTemplate": "github-releases",
-            "versioningTemplate": "pep440"
-        },
-        {
-            "customType": "regex",
-            "managerFilePatterns": ["/^pyproject\\.toml$/"],
             "matchStrings": [
                 "jellyfin-plugin-toolkit\\s*=\\s*\\{\\s*url\\s*=\\s*\"https://github\\.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v(?<currentValue>[0-9.]+)/jellyfin_plugin_toolkit-[0-9.]+-py3-none-any\\.whl\""
             ],

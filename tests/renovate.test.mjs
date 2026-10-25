@@ -6,13 +6,15 @@ import { extractPackageFile } from "/usr/local/renovate/dist/modules/manager/cus
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const config = JSON.parse(fs.readFileSync(path.join(root, "renovate.json"), "utf8"));
 const pins = JSON.parse(fs.readFileSync(path.join(root, "toolchain.json"), "utf8"));
+const shared = JSON.parse(fs.readFileSync(path.join(root, ".build/jpt/tooling.json"), "utf8"));
 const dependencies = [];
-for (const manager of config.customManagers) {
+for (const manager of [...shared.customManagers, ...config.customManagers]) {
     const filename = manager.managerFilePatterns[0].includes("pyproject") ? "pyproject.toml" : "toolchain.json";
     dependencies.push(...(await extractPackageFile(fs.readFileSync(path.join(root, filename), "utf8"), filename, manager)).deps);
 }
 const gh = dependencies.find((dep) => dep.depName === "cli/cli");
 assert.equal(gh.currentValue, pins.gh);
+assert.equal(dependencies.filter((dep) => dep.depName === "uv").length, 1);
 const uv = dependencies.find((dep) => dep.depName === "uv");
 assert.equal(uv.packageName, "astral-sh/uv");
 assert.equal(uv.datasource, "github-releases");

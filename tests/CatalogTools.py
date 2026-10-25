@@ -99,7 +99,10 @@ class ToolTests(unittest.TestCase):
                 continue
             self.assertIn("astral-sh/setup-uv@", text)
             self.assertNotIn("          version:", text)
-            self.assertIn("python-version-file: .python-version", text)
+            self.assertNotIn("actions/setup-python@", text)
+            self.assertIn(".python-version", text)
+            self.assertIn("pyproject.toml", text)
+            self.assertIn("uv.lock", text)
             self.assertIn("uv sync --locked", text)
             if workflow.name not in {"advisories.yml"}:
                 self.assertIn("scripts/tools.py install-gh", text)
