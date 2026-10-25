@@ -81,10 +81,20 @@ class ToolTests(unittest.TestCase):
             "py" + "".join(python.split(".")[:2]),
             project["tool"]["ruff"]["target-version"],
         )
+        shared_workflows = {
+            "toolkit-sync.yml": "sync-bindings.yml",
+            "pr-title.yml": "pr-title.yml",
+        }
         for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
             text = workflow.read_text()
             if "uses: rakuzen25/jellyfin-plugin-toolkit/" in text:
-                self.assertIn("sync-bindings.yml@", text)
+                self.assertIn(workflow.name, shared_workflows)
+                self.assertRegex(
+                    text,
+                    r"uses: rakuzen25/jellyfin-plugin-toolkit/\.github/workflows/"
+                    + shared_workflows[workflow.name].replace(".", r"\.")
+                    + r"@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+",
+                )
                 continue
             self.assertIn("astral-sh/setup-uv@", text)
             self.assertNotIn("          version:", text)
