@@ -84,10 +84,11 @@ class ToolTests(unittest.TestCase):
         shared_workflows = {
             "toolkit-sync.yml": "sync-bindings.yml",
             "pr-title.yml": "pr-title.yml",
+            "app-setup.yml": "setup-automation.yml",
         }
         for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
             text = workflow.read_text()
-            if "uses: rakuzen25/jellyfin-plugin-toolkit/" in text:
+            if "uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/" in text:
                 self.assertIn(workflow.name, shared_workflows)
                 self.assertRegex(
                     text,

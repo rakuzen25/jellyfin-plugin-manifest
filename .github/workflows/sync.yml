@@ -15,7 +15,7 @@ jobs:
   update:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@1a5ba7079ec8220f5b1899987899eb08cc07c214 # v0.5.2
         id: app
         with:
           client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
@@ -40,7 +40,7 @@ jobs:
       - name: Install pinned GitHub CLI
         run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
       - name: Create read-only source token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@1a5ba7079ec8220f5b1899987899eb08cc07c214 # v0.5.2
         id: source
         with:
           client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
