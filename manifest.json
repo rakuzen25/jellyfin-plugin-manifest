@@ -8,6 +8,14 @@
         "category": "Music",
         "versions": [
             {
+                "version": "0.3.2.0",
+                "changelog": "### Miscellaneous Chores\n\n* bump version ([9b7cbe8](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/9b7cbe811cade738907336648f5cb54f5d2ca5aa))",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.3.2/lyricbridge-0.3.2.zip",
+                "checksum": "68e1aa5c8e5b48676dc3adb36474653b",
+                "timestamp": "2026-10-23T00:00:00Z"
+            },
+            {
                 "version": "0.3.1.0",
                 "changelog": "### Bug Fixes\n\n* **deps:** update routine dependency updates ([#46](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/issues/46)) ([02d79a0](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/02d79a03fef0326b07e706c021f9589e9c51e767))",
                 "targetAbi": "12.2.0.0",
@@ -25,6 +33,14 @@
         "description": "Explicit music metadata corrections with preview and activation; original media stays unchanged.",
         "category": "Music",
         "versions": [
+            {
+                "version": "0.2.2.0",
+                "changelog": "### Miscellaneous Chores\n\n* bump version ([1f8d21e](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/1f8d21e12010f85a1f3d160201485a3437b6d73c))",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/releases/download/v0.2.2/music-metadata-manager-0.2.2.zip",
+                "checksum": "8ce95af2a1393648369d37d05b916991",
+                "timestamp": "2026-10-23T00:00:00Z"
+            },
             {
                 "version": "0.2.1.0",
                 "changelog": "### Miscellaneous Chores\n\n* update gitignore ([936c72f](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/936c72fb4683b0c08d66801c2597880168a466a3))",
