@@ -1,0 +1,24 @@
+name: Synchronize toolkit update
+on:
+  workflow_run:
+    workflows: ["Validate catalog"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Renovate toolkit PR to synchronize
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  synchronize:
+    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/sync-bindings.yml@5b40ac2f5d56620a30ddadeed23da8bd9df2bc72 # v0.5.1
+    with:
+      run_id: ${{ github.event_name == 'workflow_run' && format('{0}', github.event.workflow_run.id) || '' }}
+      pr_number: ${{ inputs.pr_number || '' }}
+      app_client_id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
+    secrets:
+      PLUGIN_APP_PRIVATE_KEY: ${{ secrets.PLUGIN_APP_PRIVATE_KEY }}

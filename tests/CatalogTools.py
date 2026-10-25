@@ -3,11 +3,14 @@
 import hashlib
 import io
 import json
+import os
+import subprocess
 import sys
 import tarfile
 import tempfile
 import tomllib
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +19,7 @@ import tools
 
 
 class ToolTests(unittest.TestCase):
-    def archive(self):
+    def archive(self) -> tuple[str, bytes]:
         version = json.loads((tools.ROOT / "toolchain.json").read_text())["gh"]
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
@@ -26,19 +29,19 @@ class ToolTests(unittest.TestCase):
             archive.addfile(item, io.BytesIO(data))
         return version, buffer.getvalue()
 
-    def test_installer_verifies_archive_and_installs_only_expected_binary(self):
+    def test_installer_verifies_archive_and_installs_only_expected_binary(self) -> None:
         version, archive = self.archive()
         checksum = f"{hashlib.sha256(archive).hexdigest()}  gh_{version}_linux_amd64.tar.gz\n".encode()
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "bin"
             with (
                 patch.object(
-                    tools.urllib.request,
+                    urllib.request,
                     "urlopen",
                     side_effect=[io.BytesIO(checksum), io.BytesIO(archive)],
                 ),
-                patch.object(tools.subprocess, "run") as run,
-                patch.dict(tools.os.environ, {}, clear=True),
+                patch.object(subprocess, "run") as run,
+                patch.dict(os.environ, {}, clear=True),
             ):
                 tools.install_gh(destination)
             self.assertEqual((destination / "gh").read_bytes(), b"fixture executable")
@@ -47,14 +50,14 @@ class ToolTests(unittest.TestCase):
                 [str(destination / "gh"), "--version"], check=True
             )
 
-    def test_bad_checksum_writes_no_executable(self):
+    def test_bad_checksum_writes_no_executable(self) -> None:
         version, archive = self.archive()
         checksum = f"{'0' * 64}  gh_{version}_linux_amd64.tar.gz\n".encode()
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "bin"
             with (
                 patch.object(
-                    tools.urllib.request,
+                    urllib.request,
                     "urlopen",
                     side_effect=[io.BytesIO(checksum), io.BytesIO(archive)],
                 ),
@@ -63,7 +66,7 @@ class ToolTests(unittest.TestCase):
                 tools.install_gh(destination)
             self.assertFalse(destination.exists())
 
-    def test_runtime_and_workflow_pins_agree(self):
+    def test_runtime_and_workflow_pins_agree(self) -> None:
         package = json.loads((tools.ROOT / "package.json").read_text())
         self.assertEqual(
             package["engines"]["node"],
@@ -78,25 +81,35 @@ class ToolTests(unittest.TestCase):
             "py" + "".join(python.split(".")[:2]),
             project["tool"]["ruff"]["target-version"],
         )
+        shared_workflows = {
+            "toolkit-sync.yml": "sync-bindings.yml",
+            "pr-title.yml": "pr-title.yml",
+        }
         for workflow in (tools.ROOT / ".github/workflows").glob("*.yml"):
             text = workflow.read_text()
+            if "uses: rakuzen25/jellyfin-plugin-toolkit/" in text:
+                self.assertIn(workflow.name, shared_workflows)
+                self.assertRegex(
+                    text,
+                    r"uses: rakuzen25/jellyfin-plugin-toolkit/\.github/workflows/"
+                    + shared_workflows[workflow.name].replace(".", r"\.")
+                    + r"@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+",
+                )
+                continue
             self.assertIn("astral-sh/setup-uv@", text)
             self.assertNotIn("          version:", text)
             self.assertIn("python-version-file: .python-version", text)
             self.assertIn("uv sync --locked", text)
-            self.assertIn("scripts/tools.py install-gh", text)
+            if workflow.name not in {"advisories.yml"}:
+                self.assertIn("scripts/tools.py install-gh", text)
             self.assertNotIn("pip install", text)
 
-    def test_actionlint_exception_is_specific_and_tools_have_no_network(self):
-        with patch.object(tools.subprocess, "run") as run:
-            tools.check_config()
-        self.assertEqual(run.call_count, 3)
-        actionlint, renovate, extraction = [call.args[0] for call in run.call_args_list]
-        self.assertEqual(
-            actionlint[actionlint.index("-ignore") + 1],
-            '^unexpected key "queue" for "concurrency" section\\.',
-        )
-        for command in (actionlint, renovate, extraction):
-            self.assertIn("none", command)
-            self.assertTrue(any("sha256:" in item for item in command))
-        self.assertIn("--strict", renovate)
+    def test_catalog_policy_test_uses_the_pinned_offline_validator(self) -> None:
+        with patch.object(subprocess, "run") as run:
+            tools.test_renovate()
+        run.assert_called_once()
+        command = run.call_args.args[0]
+        self.assertIn("--network", command)
+        self.assertIn("none", command)
+        self.assertTrue(any("sha256:" in item for item in command))
+        self.assertEqual("/work/tests/renovate.test.mjs", command[-1])

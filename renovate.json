@@ -1,6 +1,6 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.4.3"],
+    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.5.1"],
     "semanticCommits": "enabled",
     "semanticCommitType": "chore",
     "semanticCommitScope": "deps",
@@ -11,6 +11,22 @@
             "commitMessageTopic": "shared tooling policy",
             "automerge": false,
             "groupName": null
+        },
+        {
+            "description": ["Toolkit bindings are updated by trusted synchronization."],
+            "matchPackageNames": ["rakuzen25/jellyfin-plugin-toolkit", "rakuzen25/jellyfin-plugin-toolkit/**"],
+            "enabled": false
+        },
+        {
+            "matchManagers": ["custom.regex"],
+            "matchDatasources": ["github-releases"],
+            "matchPackageNames": ["rakuzen25/jellyfin-plugin-toolkit"],
+            "matchFileNames": ["pyproject.toml"],
+            "enabled": true,
+            "automerge": false,
+            "groupName": null,
+            "minimumReleaseAge": null,
+            "minimumReleaseAgeBuffer": null
         }
     ],
     "customManagers": [
@@ -40,6 +56,17 @@
             "packageNameTemplate": "astral-sh/uv",
             "datasourceTemplate": "github-releases",
             "versioningTemplate": "pep440"
+        },
+        {
+            "customType": "regex",
+            "managerFilePatterns": ["/^pyproject\\.toml$/"],
+            "matchStrings": [
+                "jellyfin-plugin-toolkit\\s*=\\s*\\{\\s*url\\s*=\\s*\"https://github\\.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v(?<currentValue>[0-9.]+)/jellyfin_plugin_toolkit-[0-9.]+-py3-none-any\\.whl\""
+            ],
+            "depNameTemplate": "rakuzen25/jellyfin-plugin-toolkit",
+            "datasourceTemplate": "github-releases",
+            "versioningTemplate": "semver",
+            "extractVersionTemplate": "^v(?<version>.*)$"
         }
     ]
 }
