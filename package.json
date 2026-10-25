@@ -23,6 +23,6 @@
         "remark-lint": "10.0.1",
         "remark-lint-no-undefined-references": "5.0.2",
         "remark-validate-links": "13.1.0",
-        "unist-util-visit": "5.1.0"
+        "unist-util-visit": "5.2.0"
     }
 }
