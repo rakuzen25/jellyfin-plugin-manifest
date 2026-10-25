@@ -1,6 +1,6 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.5.1"],
+    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.5.2"],
     "semanticCommits": "enabled",
     "semanticCommitType": "chore",
     "semanticCommitScope": "deps",

@@ -15,7 +15,7 @@ permissions:
   pull-requests: read
 jobs:
   synchronize:
-    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/sync-bindings.yml@5b40ac2f5d56620a30ddadeed23da8bd9df2bc72 # v0.5.1
+    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/sync-bindings.yml@1a5ba7079ec8220f5b1899987899eb08cc07c214 # v0.5.2
     with:
       run_id: ${{ github.event_name == 'workflow_run' && format('{0}', github.event.workflow_run.id) || '' }}
       pr_number: ${{ inputs.pr_number || '' }}
