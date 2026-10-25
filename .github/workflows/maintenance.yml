@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: Require the catalog main branch
         run: test "$GITHUB_REF" = refs/heads/main
-      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@1a5ba7079ec8220f5b1899987899eb08cc07c214 # v0.5.2
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@d199cb44534bee72936ae2a007b0c0eda82131d1 # v0.5.3
         id: app
         with:
           client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
@@ -45,19 +45,19 @@ jobs:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version-file: .python-version
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            .python-version
+            pyproject.toml
+            uv.lock
       - run: uv sync --locked --no-dev
       - name: Install pinned GitHub CLI
         run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
       - name: Create read-only source verification token
         continue-on-error: true
-        uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@1a5ba7079ec8220f5b1899987899eb08cc07c214 # v0.5.2
+        uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/app-token@d199cb44534bee72936ae2a007b0c0eda82131d1 # v0.5.3
         id: source
         with:
           client-id: ${{ vars.PLUGIN_APP_CLIENT_ID }}

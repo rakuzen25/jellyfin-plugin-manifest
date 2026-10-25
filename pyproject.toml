@@ -15,10 +15,10 @@ dev = [
 [tool.uv]
 package = false
 required-version = "==0.13.5"
-python-preference = "only-system"
+python-preference = "only-managed"
 
 [tool.uv.sources]
-jellyfin-plugin-toolkit = { url = "https://github.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v0.5.2/jellyfin_plugin_toolkit-0.5.2-py3-none-any.whl" }
+jellyfin-plugin-toolkit = { url = "https://github.com/rakuzen25/jellyfin-plugin-toolkit/releases/download/v0.5.3/jellyfin_plugin_toolkit-0.5.3-py3-none-any.whl" }
 
 [tool.ruff]
 extend = ".build/jpt/configs/ruff.toml"
