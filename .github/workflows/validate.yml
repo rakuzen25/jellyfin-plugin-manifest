@@ -10,25 +10,18 @@ permissions:
   actions: read
   attestations: read
 concurrency:
-  group: catalog-validate-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: catalog-validate-${{ github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base != null) && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base != null) }}
 jobs:
   catalog-validate:
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'catalog-metadata-event' || 'catalog-validate' }}
+    if: github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Check Conventional Commit PR title
-        if: github.event_name == 'pull_request'
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^\)]+\))?!?:\ .+ ]]; then
-            echo 'Use a Conventional Commit title, for example: fix(catalog): verify release metadata'
-            exit 1
-          fi
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: .python-version

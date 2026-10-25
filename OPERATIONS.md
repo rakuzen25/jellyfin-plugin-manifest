@@ -44,8 +44,8 @@ Plugin publishers create releases and sign attestations; the catalog reads them.
 Configure these settings before enabling publication:
 
 1. Run **Validate catalog** and confirm that `catalog-validate` passes.
-2. Under **Settings → General → Pull Requests**, enable **Allow auto-merge** and squash merging.
-3. Under **Settings → Rules → Rulesets**, protect `main`: require a pull request, `catalog-validate` from GitHub Actions, and an up-to-date branch. Require no approving reviews for automated additions and owner-requested maintenance. Block force pushes and branch deletion; add no App bypass.
+2. Under **Settings → General → Pull Requests**, enable **Allow auto-merge** and squash merging, with squash commit subjects taken from the PR title.
+3. Under **Settings → Rules → Rulesets**, protect `main`: require a pull request, `catalog-validate` and `title / pr-title` from GitHub Actions, and an up-to-date branch. Require no approving reviews for automated additions and owner-requested maintenance. Block force pushes and branch deletion; add no App bypass.
 4. Under **Actions → General**, permit the reviewed SHA-pinned actions used here. Keep default workflow permissions read-only.
 5. Run **Reconcile plugin catalog** manually. A current catalog produces no change; a qualifying release creates an App-owned pull request requesting squash auto-merge.
 
@@ -88,7 +88,7 @@ To propose an owner decision, open **Actions → Withdraw or restore version →
 4. Enter the exact four-component **Version**, such as `0.1.3.0`. Leading zeros are invalid except for a component equal to `0`.
 5. Enter a **Reason**, then run the workflow. The request records your actor name and workflow-run link.
 
-Dispatch authorizes the proposal. The Actions summary links to the App-owned maintenance pull request. Auto-merge waits for `catalog-validate` and an up-to-date branch; no protection bypass or direct `main` push is used.
+Dispatch authorizes the proposal. The Actions summary links to the App-owned maintenance pull request. Auto-merge waits for catalog validation, the shared PR-title check, and an up-to-date branch; no protection bypass or direct `main` push is used.
 
 Withdrawal retains history, release files, and installed plugins. Reconciliation cannot re-add an excluded version. Restoration verifies the original stable release, source, receipt, and hashes before removing its exclusion. Failed verification preserves pending decisions.
 
@@ -139,19 +139,16 @@ Other naming conventions or receipt policies require a reviewed adapter, without
 
 ## Test the catalog
 
-Use Conventional Commit messages and PR titles, such as `fix(catalog): verify release metadata`, `chore(deps): update tooling`, or `docs: clarify setup`. CI checks PR titles, which should be used as the squash commit title when merging. Automated catalog commits and squash merges use `chore(catalog): ...`; Renovate uses `chore(deps): ...`.
-
-In this checkout, select the Python version in `.python-version`, then install the check tools and run the checks used by `catalog-validate`:
+Use Conventional Commit messages and PR titles, such as `fix(catalog): verify release metadata`, `chore(deps): update tooling`, or `docs: clarify setup`. A separate shared CI check validates PR titles; title/body edits do not rerun catalog validation, while base-branch retargeting does. PR titles are used as the squash commit title when merging. Automated catalog commits and squash merges use `chore(catalog): ...`; Renovate uses `chore(deps): ...`.
 
 Install the Python and Node versions declared in `.python-version` and `.node-version`, the pnpm version from `package.json`, the uv version required by `pyproject.toml`, and Docker. uv uses the installed Python interpreter; setup-uv reads its version from the project rather than a second workflow pin. Restore tools explicitly before checks:
 
 ```sh
 uv sync --locked
 pnpm install --frozen-lockfile
-pnpm check
-pnpm test
 uv run --no-sync jpt prepare
 pnpm check
+pnpm test
 uv run --no-sync python scripts/tools.py test-renovate
 ```
 

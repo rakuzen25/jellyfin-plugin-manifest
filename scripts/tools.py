@@ -73,7 +73,7 @@ def main() -> None:
     elif args.command == "check-config":
         from jellyfin_plugin_toolkit.quality import main as quality
 
-        quality(ROOT, target="tooling")
+        quality(ROOT, target="automation")
         test_renovate()
     else:
         test_renovate()
