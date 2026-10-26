@@ -1,5 +1,3 @@
 {
-    "gh": "2.103.2",
-    "actionlint": "rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667",
-    "renovate": "ghcr.io/renovatebot/renovate:44.184.1@sha256:66a74199aaf3098ab1de4c23087389cfb1a323ed0ea353f4abad085cfbaf173d"
+    "gh": "2.103.2"
 }

@@ -97,23 +97,27 @@ class ToolTests(unittest.TestCase):
                     + r"@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+",
                 )
                 continue
-            self.assertIn("astral-sh/setup-uv@", text)
-            self.assertNotIn("          version:", text)
-            self.assertNotIn("actions/setup-python@", text)
-            self.assertIn(".python-version", text)
-            self.assertIn("pyproject.toml", text)
-            self.assertIn("uv.lock", text)
-            self.assertIn("uv sync --locked", text)
+            self.assertIn("/.github/actions/setup-python@", text)
+            self.assertNotIn("astral-sh/setup-uv@", text)
+            self.assertNotIn("uses: actions/setup-python@", text)
+            self.assertIn(
+                "mode: "
+                + (
+                    "runtime"
+                    if workflow.name in {"sync.yml", "maintenance.yml"}
+                    else "development"
+                ),
+                text,
+            )
             if workflow.name not in {"advisories.yml"}:
                 self.assertIn("scripts/tools.py install-gh", text)
             self.assertNotIn("pip install", text)
 
-    def test_catalog_policy_test_uses_the_pinned_offline_validator(self) -> None:
-        with patch.object(subprocess, "run") as run:
-            tools.test_renovate()
-        run.assert_called_once()
-        command = run.call_args.args[0]
-        self.assertIn("--network", command)
-        self.assertIn("none", command)
-        self.assertTrue(any("sha256:" in item for item in command))
-        self.assertEqual("/work/tests/renovate.test.mjs", command[-1])
+    def test_catalog_does_not_own_shared_validator_pins(self) -> None:
+        pins = json.loads((tools.ROOT / "toolchain.json").read_text())
+        self.assertEqual({"gh"}, set(pins))
+        project = tomllib.loads((tools.ROOT / "pyproject.toml").read_text())
+        self.assertEqual(
+            "tests/renovate.test.mjs",
+            project["tool"]["jpt"]["quality"]["renovate_tests"],
+        )

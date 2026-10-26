@@ -22,35 +22,31 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            .python-version
-            pyproject.toml
-            uv.lock
-      - run: uv sync --locked
+          project-directory: .
+          mode: development
       - name: Install pinned GitHub CLI
         run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
         with:
-          install: false
-          node-version-file: .node-version
-      - run: pnpm install --frozen-lockfile
+          project-directory: .
       - run: uv run --no-sync jpt prepare
       - name: Check formatting and lint
         run: pnpm check
       - run: pnpm test
+      - name: Select fresh advisory execution
+        id: audit
+        run: uv run --no-sync jpt internal audit-selection
       - name: Audit dependency advisories
+        if: steps.audit.outputs.required == 'true'
         run: uv run --no-sync jpt test advisories
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always()
+        if: always() && steps.audit.outputs.required == 'true'
         with:
           name: manifest-advisories
           path: dist/evidence/advisories.json
           if-no-files-found: warn
-      - name: Test Renovate dependency extraction
-        run: uv run --no-sync python scripts/tools.py test-renovate
       - name: Verify catalog and public release provenance
         env:
           GH_TOKEN: ${{ github.token }}

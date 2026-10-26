@@ -12,19 +12,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            .python-version
-            pyproject.toml
-            uv.lock
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+          project-directory: .
+          mode: development
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
         with:
-          install: false
-          node-version-file: .node-version
-      - run: uv sync --locked
-      - run: pnpm install --frozen-lockfile
+          project-directory: .
+          install: "false"
       - run: uv run --no-sync jpt test advisories
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
