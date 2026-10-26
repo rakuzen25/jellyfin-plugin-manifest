@@ -6,4 +6,4 @@ permissions:
   contents: read
 jobs:
   title:
-    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/pr-title.yml@d199cb44534bee72936ae2a007b0c0eda82131d1 # v0.5.3
+    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/pr-title.yml@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1

@@ -193,3 +193,5 @@ For ongoing changes, use [withdrawal and restoration](#withdraw-or-restore-a-ver
 ## Shared toolkit releases
 
 Schema 7 receipts identify the toolkit wheel and the SHA256 of `uv.lock` from the tagged plugin source. Verification checks the canonical released wheel URL, wheel and source distribution hashes, `SHA256SUMS`, and schema 2 `build-provenance.json` against the toolkit release tag. The approved reusable signer workflow must match that exact tag commit. Update plugin allowlists and the GitHub App installation when onboarding another repository.
+
+Development checks use toolkit-owned actionlint and Renovate runtimes through `pnpm check`; the catalog repository tracks only its own GitHub CLI pin in `toolchain.json`. Repository-specific Renovate assertions run through the shared offline harness. Native setup actions consume this repository's Python/uv and Node/pnpm pins. Catalog runtime jobs use locked runtime-only synchronization; their release verifier and trust policy remain independent of toolkit Python tooling. Advisory audits run for dependency changes, scheduled audits and explicit fresh verification.
