@@ -32,7 +32,7 @@ jobs:
       - run: uv sync --locked
       - name: Install pinned GitHub CLI
         run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           install: false
           node-version-file: .node-version
