@@ -110,6 +110,8 @@ Invalid versions, such as `00.1.3.0`, leave the manifest untouched. Keep history
 
 Use the workflow log and integrity issue to choose a recovery action:
 
+Public release receipts use schema 7 independently of internal CI evidence versions. A rejected internal receipt must be fixed by the producer and replaced in a new plugin release. Preserve published assets and tags. Mark a version that never entered the catalog as a prerelease to exclude it from stable reconciliation; use catalog maintenance to withdraw a catalogued version. A newer valid release does not exempt older published stable releases from verification.
+
 | Symptom                                                               | Action                                                                                                                                                                                        |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Missing assets, unavailable evidence, API failure, or changed release | Resolve the cause, then rerun **Reconcile plugin catalog**. Preserve existing releases and history.                                                                                           |
@@ -149,7 +151,6 @@ pnpm install --frozen-lockfile
 uv run --no-sync jpt prepare
 pnpm check
 pnpm test
-uv run --no-sync python scripts/tools.py test-renovate
 ```
 
 Use `pnpm format` to apply formatting. The configuration check uses pinned Docker images and has no network access. GitHub CLI is pinned in `toolchain.json`; install the verified Linux AMD64 binary before live verification:

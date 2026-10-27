@@ -1,6 +1,6 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.6.1", "github>rakuzen25/jellyfin-plugin-toolkit#v0.6.1"],
+    "extends": ["github>rakuzen25/jellyfin-plugin-toolkit:tooling#v0.6.3", "github>rakuzen25/jellyfin-plugin-toolkit#v0.6.3"],
     "customManagers": [
         {
             "customType": "regex",

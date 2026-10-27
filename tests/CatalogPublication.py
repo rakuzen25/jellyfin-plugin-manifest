@@ -332,6 +332,29 @@ class CatalogPublicationTests(unittest.TestCase):
             core.reconcile(self.github, self.plugins, history, [])
         self.assertEqual(len(history), 1)
 
+    def test_toolkit_public_contract_matches_independent_catalog_policy(self) -> None:
+        from jellyfin_plugin_toolkit.release.receipt import PublicReceipt
+
+        fields = copy.deepcopy(self.github.receipts["v0.1.3"])
+        del fields["schema"]
+        fields["validated_at"] = "2026-10-27T00:00:00+00:00"
+        fields["toolkit"] = {
+            "distribution": "jellyfin-plugin-toolkit",
+            "version": "0.6.3",
+            "source": "https://example.invalid/toolkit.whl",
+            "sha256": "a" * 64,
+            "python_lock_sha256": "b" * 64,
+        }
+        published = PublicReceipt.model_validate(fields).model_dump(by_alias=True)
+        core.check_receipt(
+            published,
+            SOURCE,
+            self.github.commit,
+            POLICY,
+            self.github.run,
+            self.github.jobs,
+        )
+
     def test_public_receipt_requires_attestation_and_no_artifact_fallback(
         self,
     ) -> None:
