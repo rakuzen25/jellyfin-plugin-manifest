@@ -8,6 +8,14 @@
         "category": "Music",
         "versions": [
             {
+                "version": "0.3.4.0",
+                "changelog": "### Bug Fixes\n\n* adopt public release receipt contract ([#65](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/issues/65)) ([93b0418](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/93b041872d4b0060bf5201d08d69c13deb882d58))",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.3.4/lyricbridge-0.3.4.zip",
+                "checksum": "f962a9afa193e5b328a228233f7a1ce8",
+                "timestamp": "2026-10-27T00:00:00Z"
+            },
+            {
                 "version": "0.3.2.0",
                 "changelog": "### Miscellaneous Chores\n\n* bump version ([9b7cbe8](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/9b7cbe811cade738907336648f5cb54f5d2ca5aa))",
                 "targetAbi": "12.2.0.0",

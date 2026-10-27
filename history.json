@@ -160,5 +160,38 @@
             ]
         },
         "published_at": "2026-10-27T15:58:22Z"
+    },
+    "70a9d327-7e98-4201-88a5-724d39366c40/0.3.4.0": {
+        "repository": "rakuzen25/jellyfin-plugin-lyricbridge",
+        "tag": "v0.3.4",
+        "release_id": 425682061,
+        "commit": "1f228f07dce98be74632f41f4f7ec4f98e45c52d",
+        "artifacts": {
+            "lyricbridge-0.3.4.zip": "3db8557b5006e86a1963df5d64b78913d247f39b3382bbcc09c04229151963d1",
+            "lyricbridge-source-0.3.4.zip": "151423e114409a668d25ba1fd310ce1c2f13681de1031bcf6069eee53d6d4e1e",
+            "lyricbridge-web-0.3.4.zip": "80e790938de78adcb31f2df0a56b41e558aa468e4712942859cdeb7e0c67ecfe",
+            "manifest.json": "a907350b3403c8b23890809085a73cb8cde455af45db5e82f7db53949f79bcd6",
+            "SHA256SUMS": "b580d093761e404bfd29906bf096ccf616b2f70978a8ad441c792b650f93a5cc"
+        },
+        "run_id": "40536400575",
+        "entry": {
+            "guid": "70a9d327-7e98-4201-88a5-724d39366c40",
+            "name": "LyricBridge",
+            "owner": "rakuzen25",
+            "overview": "Word-by-word karaoke lyrics, translations, and pronunciation for Jellyfin\n      Web.",
+            "description": "Follow your music with synchronized karaoke lyrics in Jellyfin Web.\n      Search multiple lyric providers, import lyrics, and save your preferred versions. Display\n      translations and pronunciation alongside the original lyrics, with optional tools to generate\n      missing language support or transcribe audio.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.3.4.0",
+                    "changelog": "### Bug Fixes\n\n* adopt public release receipt contract ([#65](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/issues/65)) ([93b0418](https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/commit/93b041872d4b0060bf5201d08d69c13deb882d58))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-lyricbridge/releases/download/v0.3.4/lyricbridge-0.3.4.zip",
+                    "checksum": "f962a9afa193e5b328a228233f7a1ce8",
+                    "timestamp": "2026-10-27T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-27T16:12:11Z"
     }
 }
