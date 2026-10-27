@@ -12,11 +12,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@b2e9575af98d8d08c4514b8de82a61b2f16c5b75 # v0.6.3
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@ca81ee6d897b724f1ad098317de9dabdd9d4a92a # v0.6.4
         with:
           project-directory: .
           mode: development
-      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@b2e9575af98d8d08c4514b8de82a61b2f16c5b75 # v0.6.3
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@ca81ee6d897b724f1ad098317de9dabdd9d4a92a # v0.6.4
         with:
           project-directory: .
           install: "false"
