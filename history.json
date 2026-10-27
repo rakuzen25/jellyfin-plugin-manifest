@@ -128,5 +128,37 @@
             ]
         },
         "published_at": "2026-10-23T09:06:42Z"
+    },
+    "86400cc2-d51e-4695-82c0-5d4f61d3a1f7/0.2.4.0": {
+        "repository": "rakuzen25/jellyfin-plugin-music-metadata-manager",
+        "tag": "v0.2.4",
+        "release_id": 425669032,
+        "commit": "7069f6538748b78288d81bcedf3df309ec7ef6f5",
+        "artifacts": {
+            "manifest.json": "3e6d5c6ae4971c58c37e516dd0a0795fac3e97d5a38b5f295a241faed4927d05",
+            "music-metadata-manager-0.2.4.zip": "5fafbf326c886d80f353abcbe06a45602d1ddcd558a2117287c53506435bad12",
+            "music-metadata-manager-source-0.2.4.zip": "ee9589da098f667cb800e8dba32df4c33bbd379bcb40d52ac33d64a33b3fd7be",
+            "SHA256SUMS": "980f34efa830f69f1c7afb9f56cab5e2aae6a4374bd41331386f44d965048986"
+        },
+        "run_id": "40535085175",
+        "entry": {
+            "guid": "86400cc2-d51e-4695-82c0-5d4f61d3a1f7",
+            "name": "Music Metadata Manager",
+            "owner": "rakuzen25",
+            "overview": "Review music metadata corrections, artist identities and library issues",
+            "description": "Explicit music metadata corrections with preview and activation; original media stays unchanged.",
+            "category": "Music",
+            "versions": [
+                {
+                    "version": "0.2.4.0",
+                    "changelog": "### Bug Fixes\n\n* adopt public release receipt contract ([#26](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/issues/26)) ([d821adc](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/d821adc6027a2998a159a84f07dc6aed838fc0bc))",
+                    "targetAbi": "12.2.0.0",
+                    "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/releases/download/v0.2.4/music-metadata-manager-0.2.4.zip",
+                    "checksum": "1b03d1dd5d5db1733ffd349583d69391",
+                    "timestamp": "2026-10-27T00:00:00Z"
+                }
+            ]
+        },
+        "published_at": "2026-10-27T15:58:22Z"
     }
 }

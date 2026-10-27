@@ -34,6 +34,14 @@
         "category": "Music",
         "versions": [
             {
+                "version": "0.2.4.0",
+                "changelog": "### Bug Fixes\n\n* adopt public release receipt contract ([#26](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/issues/26)) ([d821adc](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/d821adc6027a2998a159a84f07dc6aed838fc0bc))",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/releases/download/v0.2.4/music-metadata-manager-0.2.4.zip",
+                "checksum": "1b03d1dd5d5db1733ffd349583d69391",
+                "timestamp": "2026-10-27T00:00:00Z"
+            },
+            {
                 "version": "0.2.2.0",
                 "changelog": "### Miscellaneous Chores\n\n* bump version ([1f8d21e](https://github.com/rakuzen25/jellyfin-plugin-music-metadata-manager/commit/1f8d21e12010f85a1f3d160201485a3437b6d73c))",
                 "targetAbi": "12.2.0.0",
