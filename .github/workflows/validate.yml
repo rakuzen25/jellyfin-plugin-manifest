@@ -22,13 +22,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-python@b2e9575af98d8d08c4514b8de82a61b2f16c5b75 # v0.6.3
         with:
           project-directory: .
           mode: development
       - name: Install pinned GitHub CLI
         run: uv run --no-sync python scripts/tools.py install-gh --directory "$RUNNER_TEMP/catalog-tools"
-      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@72d140f19049afcc3a3fc6a7b759867707200cf6 # v0.6.1
+      - uses: rakuzen25/jellyfin-plugin-toolkit/.github/actions/setup-node@b2e9575af98d8d08c4514b8de82a61b2f16c5b75 # v0.6.3
         with:
           project-directory: .
       - run: uv run --no-sync jpt prepare
