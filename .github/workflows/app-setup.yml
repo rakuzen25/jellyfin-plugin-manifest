@@ -6,7 +6,7 @@ permissions:
 jobs:
   configure:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/setup-automation.yml@b2e9575af98d8d08c4514b8de82a61b2f16c5b75 # v0.6.3
+    uses: rakuzen25/jellyfin-plugin-toolkit/.github/workflows/setup-automation.yml@ca81ee6d897b724f1ad098317de9dabdd9d4a92a # v0.6.4
     with:
       app_client_id: ${{ vars.PLUGIN_APP_CLIENT_ID }}
       retry_closed: true
